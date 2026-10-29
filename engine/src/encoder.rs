@@ -165,7 +165,7 @@ fn candidate_factories() -> Vec<(gst::ElementFactory, Vendor, Codec)> {
                 .and_then(|rest| rest.strip_suffix("enc"))
                 .is_some_and(|mid| mid.is_empty() || mid.starts_with("device"))
         }) {
-            out.push((factory, vendor.clone(), codec.clone()));
+            out.push((factory, vendor.clone(), *codec));
         }
     }
     // Vendor SDK encoders first, so they are not starved by an MFT wrapping the same hardware.
@@ -250,4 +250,101 @@ fn write_cache(cache: &Cache) -> Result<()> {
     std::fs::create_dir_all(path.parent().unwrap())?;
     std::fs::write(&path, serde_json::to_vec_pretty(cache)?)?;
     Ok(())
+}
+
+/// Picks the encoder for a capture whose textures live on `capture_adapter`
+/// (PLAN 6.2). Returns the encoder and whether it shares the capture adapter.
+pub fn select(
+    encoders: &[EncoderInfo],
+    codec: Codec,
+    capture_adapter: Option<u32>,
+) -> Option<(EncoderInfo, bool)> {
+    let same = |e: &EncoderInfo| e.adapter.as_ref().map(|a| a.index) == capture_adapter;
+    let hw = |c: Codec| {
+        encoders
+            .iter()
+            .filter(move |e| e.hardware && e.d3d11 && e.codec == c)
+    };
+    for c in [codec, Codec::H264] {
+        if let Some(e) = hw(c).find(|e| same(e)) {
+            return Some((e.clone(), true));
+        }
+        if let Some(e) = hw(c).next() {
+            return Some((e.clone(), false));
+        }
+    }
+    encoders
+        .iter()
+        .find(|e| e.vendor == Vendor::Software)
+        .map(|e| (e.clone(), false))
+}
+
+/// Low-latency settings (PLAN 6.3). Property names differ between versions, so
+/// only existing properties are set; enums are set by nick.
+pub fn configure(enc: &gst::Element, info: &EncoderInfo, kbps: u32, fps: i32) {
+    let gop = (fps * 2).max(60) as u32;
+    let props: &[(&str, &str)] = match info.vendor {
+        Vendor::Nvidia => &[
+            ("preset", "p2"),
+            ("tune", "ultra-low-latency"),
+            ("rc-mode", "cbr"),
+            ("zerolatency", "true"),
+            ("bframes", "0"),
+            ("repeat-sequence-header", "true"),
+            ("rc-lookahead", "0"),
+        ],
+        Vendor::Amd => &[
+            ("usage", "ultra-low-latency"),
+            ("rate-control", "cbr"),
+            ("b-frames", "0"),
+            ("bframes", "0"),
+        ],
+        Vendor::Intel => &[
+            ("target-usage", "7"),
+            ("low-latency", "true"),
+            ("rate-control", "cbr"),
+            ("b-frames", "0"),
+            ("bframes", "0"),
+        ],
+        Vendor::Microsoft => &[
+            ("low-latency", "true"),
+            ("rc-mode", "cbr"),
+            ("max-bframes", "0"),
+            ("bframes", "0"),
+            ("quality-vs-speed", "20"),
+        ],
+        Vendor::Software => &[
+            ("speed-preset", "ultrafast"),
+            ("tune", "zerolatency"),
+            ("bframes", "0"),
+            ("byte-stream", "true"),
+        ],
+    };
+    for (name, value) in props {
+        if enc.find_property(name).is_some() {
+            enc.set_property_from_str(name, value);
+        }
+    }
+    for name in ["gop-size", "key-int-max"] {
+        if let Some(p) = enc.find_property(name) {
+            if p.value_type() == u32::static_type() {
+                enc.set_property(name, gop);
+            } else {
+                enc.set_property(name, gop as i32);
+            }
+        }
+    }
+    set_bitrate(enc, kbps);
+}
+
+/// All supported encoders take "bitrate" in kbit/s (u32 or i32 depending on the element).
+pub fn set_bitrate(enc: &gst::Element, kbps: u32) {
+    let Some(p) = enc.find_property("bitrate") else {
+        return;
+    };
+    if p.value_type() == u32::static_type() {
+        enc.set_property("bitrate", kbps);
+    } else if p.value_type() == i32::static_type() {
+        enc.set_property("bitrate", kbps as i32);
+    }
 }

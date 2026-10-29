@@ -41,7 +41,7 @@ export PKG_CONFIG_PATH="$GSTREAMER_1_0_ROOT_MSVC_X86_64/lib/pkgconfig"
 ## Running in dev
 
 ```bash
-make infra-up        # PostgreSQL :5432 and LiveKit --dev :7880 (key devkey / secret secret)
+make infra-up        # PostgreSQL :5432 and LiveKit --dev :17880 (key devkey, secret in deploy/docker-compose.dev.yml)
 make api             # API on :8080, applies migrations; GET /healthz
 make engine          # build the engine; try it:
 printf '{"cmd":"probe"}\n' | target/debug/discgo-engine.exe
@@ -68,3 +68,22 @@ and run `discgo-engine.exe` from that folder with `PATH` reduced to `C:\Windows\
 
 If the repository lives inside OneDrive, exclude `target/` and `node_modules/` from
 sync (or move the repository): syncing them is slow and can corrupt builds.
+
+## Engine measurements (phase 1 spike)
+
+[engine/spike/](engine/spike/) holds the measurement harness: `serve.mjs` (viewer page,
+LiveKit dev tokens, P2P signalling bridge to the engine), `viewer.html` (receiver with
+a glass-to-glass barcode clock), `measure.ps1` (one run) and `suite.ps1` (the matrix).
+
+```bash
+make infra-up && make engine-release
+node engine/spike/serve.mjs --engine target/release/discgo-engine.exe      # keep running
+powershell -File engine/spike/suite.ps1 -Modes p2p,sfu -Presets 1080p60,1440p60 -Contents text,motion
+```
+
+The viewer opens fullscreen on the captured monitor for each run. Diagnostic switches
+read by the engine: `DISCGO_ENGINE_LOG=debug|trace`, `DISCGO_ENGINE_CAPTURE_API=dxgi`,
+`DISCGO_ENGINE_CC=disabled|homegrown`, `DISCGO_ENGINE_PACING_HEADROOM=<factor>`,
+`DISCGO_ENGINE_KEEP_LATENCY=1`. The WebView2 checks run with
+`pnpm tauri dev --config '{"build":{"devUrl":"http://localhost:1420/?spike=webview"}}'`
+and report to the same harness.

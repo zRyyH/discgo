@@ -1,4 +1,5 @@
-# Dev infrastructure: PostgreSQL + LiveKit in --dev mode (key "devkey", secret "secret").
+# Dev infrastructure: PostgreSQL + LiveKit in --dev mode.
+# LiveKit API key "devkey", secret "devsecret-0123456789abcdef0123456789" (HS256 needs >= 32 bytes).
 # The API, engine and desktop app run on the host (see README.md).
 name: discgo-dev
 
@@ -21,11 +22,24 @@ services:
 
   livekit:
     image: livekit/livekit-server:v1.13.11
-    command: ["--dev", "--bind", "0.0.0.0", "--node-ip", "127.0.0.1"]
+    # Ports are offset by 10000 so they do not collide with another LiveKit on
+    # the standard 7880-7882 (e.g. inside WSL, which grabs 127.0.0.1:7880).
+    command:
+      - --dev
+      - --bind=0.0.0.0
+      - --node-ip=127.0.0.1
+      - --config-body
+      - |
+        port: 17880
+        rtc:
+          tcp_port: 17881
+          udp_port: 17882
+        keys:
+          devkey: devsecret-0123456789abcdef0123456789
     ports:
-      - "7880:7880"
-      - "7881:7881"
-      - "7882:7882/udp"
+      - "17880:17880"
+      - "17881:17881"
+      - "17882:17882/udp"
 
 volumes:
   pgdata:

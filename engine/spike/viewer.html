@@ -1,0 +1,185 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>discgo spike viewer</title>
+<style>
+  html, body { margin: 0; background: #0b0c10; color: #e7e9f0; font: 13px/1.45 'JetBrains Mono', ui-monospace, monospace; overflow: hidden; }
+  #code { position: fixed; left: 0; top: 0; image-rendering: pixelated; }
+  #clock { position: fixed; left: 0; top: 40px; font-size: 64px; font-weight: 700; }
+  #v { position: fixed; right: 0; bottom: 0; width: 60vw; background: #000; }
+  #stats { position: fixed; left: 8px; top: 140px; white-space: pre; font-size: 16px; }
+</style>
+</head>
+<body>
+<canvas id="code"></canvas>
+<div id="clock"></div>
+<pre id="stats">waiting for video…</pre>
+<video id="v" autoplay playsinline muted></video>
+<script type="module">
+// Glass-to-glass latency probe: the page paints the current time as a barcode
+// at the top-left corner of the screen. The screen is captured, encoded and sent
+// back to this page; every received frame is decoded and compared with the time
+// it is displayed. Requires the window to be fullscreen on the captured monitor.
+const params = new URLSearchParams(location.search);
+const mode = params.get('mode') ?? 'sfu';
+const CELL = 32, BITS = 24, CELLS = BITS + 2; // white guard, 24 bits, black guard
+const code = document.getElementById('code');
+code.width = CELLS * CELL; code.height = CELL;
+code.style.width = `${CELLS * CELL / devicePixelRatio}px`; code.style.height = `${CELL / devicePixelRatio}px`;
+const cctx = code.getContext('2d');
+const clock = document.getElementById('clock');
+const video = document.getElementById('v');
+const statsEl = document.getElementById('stats');
+const nowMs = () => performance.timeOrigin + performance.now();
+
+function paint(ts) {
+  const t = Math.floor(performance.timeOrigin + ts) & 0xffffff;
+  for (let i = 0; i < CELLS; i++) {
+    const bit = i === 0 ? 0 : i === CELLS - 1 ? 1 : (t >> (BITS - i)) & 1;
+    cctx.fillStyle = bit ? '#000' : '#fff';
+    cctx.fillRect(i * CELL, 0, CELL, CELL);
+  }
+  clock.textContent = (t % 100000).toString().padStart(5, '0');
+  requestAnimationFrame(paint);
+}
+requestAnimationFrame(paint);
+
+// Optional synthetic content (?content=motion|text) to load the encoder.
+const content = params.get('content');
+if (content) {
+  const bg = document.createElement('canvas');
+  bg.width = screen.width * devicePixelRatio; bg.height = screen.height * devicePixelRatio;
+  Object.assign(bg.style, { position: 'fixed', inset: '0', width: '100vw', height: '100vh', zIndex: '-1' });
+  document.body.prepend(bg);
+  const g = bg.getContext('2d');
+  const words = 'fn main let mut struct impl pub async await match Some None Ok Err return self'.split(' ');
+  let y0 = 0;
+  const draw = (ts) => {
+    if (content === 'motion') {
+      // Full-screen moving blocks and noise: close to a game or video in encoder terms.
+      for (let i = 0; i < 400; i++) {
+        g.fillStyle = `hsl(${(ts / 10 + i * 37) % 360} 70% ${30 + (i % 40)}%)`;
+        const x = (i * 97 + ts * (0.2 + (i % 7) / 10)) % bg.width, y = (i * 61 + ts * 0.15 * (i % 5)) % bg.height;
+        g.fillRect(x, y, 40 + (i % 9) * 20, 30 + (i % 5) * 25);
+      }
+    } else {
+      // Scrolling code-like text: what a screen share of an editor looks like.
+      g.fillStyle = '#111218'; g.fillRect(0, 0, bg.width, bg.height);
+      g.fillStyle = '#c8cde0'; g.font = `${14 * devicePixelRatio}px monospace`;
+      y0 = (y0 + 3) % (20 * devicePixelRatio);
+      for (let l = 0, y = -y0; y < bg.height; l++, y += 20 * devicePixelRatio) {
+        let line = ''; for (let w = 0; w < 30; w++) line += words[(l * 7 + w * 3 + Math.floor(ts / 400)) % words.length] + ' ';
+        g.fillText(line, 300 * devicePixelRatio, y);
+      }
+    }
+    requestAnimationFrame(draw);
+  };
+  requestAnimationFrame(draw);
+}
+
+// --- decode the barcode from received frames ---
+const probe = document.createElement('canvas');
+probe.width = CELLS * 4; probe.height = 4;
+const pctx = probe.getContext('2d', { willReadFrequently: true });
+let samples = [], badFrames = 0;
+function onFrame(_now, meta) {
+  // Barcode occupies [0, CELLS*CELL) x [0, CELL) physical screen pixels.
+  const sx = meta.width / (screen.width * devicePixelRatio);
+  const sy = meta.height / (screen.height * devicePixelRatio);
+  pctx.drawImage(video, 0, 0, CELLS * CELL * sx, CELL * sy, 0, 0, CELLS * 4, 4);
+  const px = pctx.getImageData(0, 0, CELLS * 4, 4).data;
+  const bitAt = (i) => {
+    const o = (2 * CELLS * 4 + i * 4 + 2) * 4; // row 2, centre of cell i
+    return (px[o] + px[o + 1] + px[o + 2]) / 3 < 128 ? 1 : 0;
+  };
+  if (bitAt(0) === 0 && bitAt(CELLS - 1) === 1) {
+    let t = 0;
+    for (let i = 1; i <= BITS; i++) t = (t << 1) | bitAt(i);
+    const shown = Math.floor(performance.timeOrigin + meta.expectedDisplayTime) & 0xffffff;
+    const lat = (shown - t + 0x1000000) % 0x1000000;
+    if (lat < 5000) samples.push(lat); else badFrames++;
+  } else badFrames++;
+  video.requestVideoFrameCallback(onFrame);
+}
+
+function pct(a, p) {
+  if (!a.length) return null;
+  const s = [...a].sort((x, y) => x - y);
+  return s[Math.min(s.length - 1, Math.floor(p * s.length))];
+}
+
+// --- receiver stats ---
+let receiver = null, last = null;
+async function report() {
+  if (!receiver) return;
+  const stats = await receiver.getStats();
+  let inb = null, pair = null;
+  stats.forEach((s) => {
+    if (s.type === 'inbound-rtp' && s.kind === 'video') inb = s;
+    if (s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded') pair = s;
+  });
+  if (!inb) return;
+  const dt = last ? (inb.timestamp - last.timestamp) / 1000 : 1;
+  const r = {
+    mode,
+    t: new Date().toISOString(),
+    res: `${inb.frameWidth}x${inb.frameHeight}`,
+    fps: last ? +((inb.framesDecoded - last.framesDecoded) / dt).toFixed(1) : null,
+    kbps: last ? Math.round(((inb.bytesReceived - last.bytesReceived) * 8) / dt / 1000) : null,
+    decoder: inb.decoderImplementation,
+    power_efficient: inb.powerEfficientDecoder,
+    jitter_buffer_ms: last && inb.jitterBufferEmittedCount > last.jitterBufferEmittedCount
+      ? +(((inb.jitterBufferDelay - last.jitterBufferDelay) / (inb.jitterBufferEmittedCount - last.jitterBufferEmittedCount)) * 1000).toFixed(1)
+      : null,
+    dropped: inb.framesDropped,
+    freezes: inb.freezeCount,
+    rtt_ms: pair?.currentRoundTripTime != null ? +(pair.currentRoundTripTime * 1000).toFixed(1) : null,
+    g2g_p50: pct(samples, 0.5), g2g_p95: pct(samples, 0.95), g2g_n: samples.length, g2g_bad: badFrames,
+  };
+  last = inb; samples = []; badFrames = 0;
+  statsEl.textContent = Object.entries(r).map(([k, v]) => `${k.padEnd(16)} ${v}`).join('\n');
+  fetch('/report', { method: 'POST', body: JSON.stringify(r) }).catch(() => {});
+}
+setInterval(report, 1000);
+
+function attach(track, rtpReceiver) {
+  receiver = rtpReceiver;
+  if ('jitterBufferTarget' in rtpReceiver) rtpReceiver.jitterBufferTarget = 0;
+  video.srcObject = new MediaStream([track]);
+  video.requestVideoFrameCallback(onFrame);
+}
+
+if (mode === 'sfu') {
+  const { Room, RoomEvent, Track } = await import('/lk.mjs');
+  const { url, token } = await (await fetch(`/token?identity=viewer-${Date.now()}&room=${params.get('room') ?? 'spike'}`)).json();
+  const room = new Room({ adaptiveStream: false });
+  room.on(RoomEvent.TrackSubscribed, (track) => {
+    if (track.kind === Track.Kind.Video) attach(track.mediaStreamTrack, track.receiver);
+  });
+  await room.connect(url, token);
+} else {
+  const pc = new RTCPeerConnection({ bundlePolicy: 'max-bundle' });
+  const send = (m) => fetch('/p2p/send', { method: 'POST', body: JSON.stringify(m) });
+  let sessionId = null;
+  pc.ontrack = (e) => { if (e.track.kind === 'video') attach(e.track, e.receiver); };
+  pc.onicecandidate = (e) => {
+    if (e.candidate && sessionId) send({ cmd: 'ice', session_id: sessionId, candidate: e.candidate.candidate, sdp_mid: e.candidate.sdpMid, sdp_m_line_index: e.candidate.sdpMLineIndex });
+  };
+  const es = new EventSource('/p2p/events');
+  es.onmessage = async (m) => {
+    const ev = JSON.parse(m.data);
+    if (ev.event === 'sdp' && ev.type === 'offer') {
+      sessionId = ev.session_id;
+      await pc.setRemoteDescription({ type: 'offer', sdp: ev.sdp });
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      send({ cmd: 'sdp', session_id: sessionId, type: 'answer', sdp: answer.sdp });
+    } else if (ev.event === 'ice' && ev.candidate) {
+      await pc.addIceCandidate({ candidate: ev.candidate, sdpMLineIndex: ev.sdp_m_line_index, sdpMid: ev.sdp_mid ?? undefined }).catch(console.warn);
+    }
+  };
+}
+</script>
+</body>
+</html>

@@ -30,4 +30,6 @@ nice
 dtls
 srtp
 rsrtp
-rswebrtc
+# errorignore, used inside webrtcsink
+debugutilsbad
+# rswebrtc is linked statically into the engine (gst-plugin-webrtc crate)
