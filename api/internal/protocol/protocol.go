@@ -13,7 +13,9 @@ import (
 )
 
 type User struct {
-	ID          string `json:"id"`
+	ID string `json:"id"`
+	// The Gmail address without "@gmail.com" (whole address for other domains).
+	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
 	AvatarURL   string `json:"avatar_url"`
 	Role        string `json:"role"`
@@ -58,13 +60,16 @@ type Message struct {
 	EditedAt    *time.Time   `json:"edited_at"`
 }
 
-type Invite struct {
-	Code      string     `json:"code"`
-	CreatedBy string     `json:"created_by"`
-	MaxUses   *int32     `json:"max_uses"`
-	Uses      int32      `json:"uses"`
-	ExpiresAt *time.Time `json:"expires_at"`
-	CreatedAt time.Time  `json:"created_at"`
+// Relationship is a friend or a pending friend request, seen from the user who
+// receives it.
+type Relationship struct {
+	User  User      `json:"user"`
+	Type  string    `json:"type"` // "friend" | "incoming" | "outgoing"
+	Since time.Time `json:"since"`
+}
+
+type RelationshipRemove struct {
+	UserID string `json:"user_id"`
 }
 
 type VoiceState struct {
@@ -106,6 +111,8 @@ type Ready struct {
 	Channels     []Channel     `json:"channels"`
 	VoiceStates  []VoiceState  `json:"voice_states"`
 	VoiceSession *VoiceSession `json:"voice_session"`
+	// Only the receiving user's friends and pending requests.
+	Relationships []Relationship `json:"relationships"`
 }
 
 // Frame is one gateway message in either direction.
@@ -129,7 +136,10 @@ const (
 	OpVoiceStateUpdate = "voice_state_update"
 	OpVoiceSession     = "voice_session"
 	OpRTCSignal        = "rtc_signal"
-	OpError            = "error"
+	// A friend or request was added or changed type; sent only to the two users.
+	OpRelationshipAdd    = "relationship_add"
+	OpRelationshipRemove = "relationship_remove"
+	OpError              = "error"
 )
 
 // Gateway ops, client -> server.
@@ -195,7 +205,7 @@ func NewFrame(op string, d any) Frame {
 }
 
 func FromUser(u db.User) User {
-	return User{ID: u.ID.String(), DisplayName: u.DisplayName, AvatarURL: u.AvatarUrl, Role: u.Role}
+	return User{ID: u.ID.String(), Username: u.Username, DisplayName: u.DisplayName, AvatarURL: u.AvatarUrl, Role: u.Role}
 }
 
 func FromMe(u db.User) Me {
@@ -206,18 +216,8 @@ func FromChannel(c db.Channel) Channel {
 	return Channel{ID: c.ID.String(), Kind: c.Kind, Name: c.Name, Position: c.Position}
 }
 
-func FromInvite(i db.Invite) Invite {
-	out := Invite{
-		Code:      i.Code,
-		CreatedBy: i.CreatedBy.String(),
-		Uses:      i.Uses,
-		ExpiresAt: utcPtr(i.ExpiresAt),
-		CreatedAt: i.CreatedAt.UTC(),
-	}
-	if i.MaxUses.Valid {
-		out.MaxUses = &i.MaxUses.Int32
-	}
-	return out
+func FromRelationship(u db.User, kind string, since time.Time) Relationship {
+	return Relationship{User: FromUser(u), Type: kind, Since: since.UTC()}
 }
 
 // FromMessage converts a row; sign turns attachment keys into download URLs.

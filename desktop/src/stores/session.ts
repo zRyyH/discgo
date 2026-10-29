@@ -5,6 +5,7 @@ import { ApiError, api, setToken, setUnauthorizedHandler } from '../api/rest';
 import { gateway } from '../api/gateway';
 import { session } from '../shared/shell';
 import { useCommunity } from './community';
+import { useFriends } from './friends';
 import { useMessages } from './messages';
 
 type Status = 'loading' | 'signed_out' | 'waiting_browser' | 'signing_in' | 'signed_in';
@@ -12,10 +13,10 @@ type Status = 'loading' | 'signed_out' | 'waiting_browser' | 'signing_in' | 'sig
 interface SessionState {
   status: Status;
   error: string | null;
-  invite: string;
   init: () => Promise<void>;
-  setInvite: (code: string) => void;
   startGoogle: (open: (url: string) => Promise<void>) => Promise<void>;
+  /** Back to the sign-in button while the browser login is pending. */
+  cancelGoogle: () => void;
   loginWithCode: (code: string) => Promise<void>;
   devLogin: (email: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -32,11 +33,10 @@ async function signOutLocally() {
   await session.clear().catch(() => {});
   useCommunity.getState().reset();
   useMessages.getState().reset();
+  useFriends.getState().reset();
 }
 
 const loginErrors: Record<string, string> = {
-  invite_required: 'Esta conta ainda não faz parte da comunidade: informe um código de convite.',
-  invite_invalid: 'O convite é inválido, expirou ou já foi usado.',
   invalid_code: 'O login expirou. Tente de novo.',
   network: 'Sem conexão com o servidor.',
 };
@@ -55,7 +55,6 @@ export const useSession = create<SessionState>()((set, get) => {
   return {
     status: 'loading',
     error: null,
-    invite: '',
     init: async () => {
       const token = await session.get().catch(() => null);
       if (!token) {
@@ -65,20 +64,20 @@ export const useSession = create<SessionState>()((set, get) => {
       start(token);
       set({ status: 'signed_in' });
     },
-    setInvite: (invite) => set({ invite: invite.trim() }),
     startGoogle: async (open) => {
       set({ status: 'waiting_browser', error: null });
-      await open(api.googleStartUrl(get().invite)).catch(() =>
+      await open(api.googleStartUrl()).catch(() =>
         set({ status: 'signed_out', error: 'Não foi possível abrir o navegador.' }),
       );
     },
+    cancelGoogle: () => set((s) => (s.status === 'waiting_browser' ? { status: 'signed_out' } : {})),
     loginWithCode: async (code) => {
       set({ status: 'signing_in', error: null });
       try {
         const { token } = await api.exchange(code);
         await session.set(token);
         start(token);
-        set({ status: 'signed_in', invite: '' });
+        set({ status: 'signed_in' });
       } catch (e) {
         set({ status: 'signed_out', error: message(e) });
       }
@@ -86,7 +85,7 @@ export const useSession = create<SessionState>()((set, get) => {
     devLogin: async (email, name) => {
       set({ status: 'signing_in', error: null });
       try {
-        const { code } = await api.devLogin(email, name, get().invite);
+        const { code } = await api.devLogin(email, name);
         await get().loginWithCode(code);
       } catch (e) {
         set({ status: 'signed_out', error: message(e) });

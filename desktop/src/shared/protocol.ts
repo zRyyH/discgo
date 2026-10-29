@@ -3,6 +3,8 @@
 
 export interface User {
   id: string;
+  /** The Gmail address without "@gmail.com" (whole address for other domains). */
+  username: string;
   display_name: string;
   avatar_url: string;
   role: 'admin' | 'member';
@@ -43,13 +45,11 @@ export interface Message {
   edited_at: string | null;
 }
 
-export interface Invite {
-  code: string;
-  created_by: string;
-  max_uses: number | null;
-  uses: number;
-  expires_at: string | null;
-  created_at: string;
+/** A friend or a pending friend request, seen from the current user. */
+export interface Relationship {
+  user: User;
+  type: 'friend' | 'incoming' | 'outgoing';
+  since: string;
 }
 
 export interface VoiceState {
@@ -84,6 +84,7 @@ export interface Ready {
   channels: Channel[];
   voice_states: VoiceState[];
   voice_session: VoiceSession | null;
+  relationships: Relationship[];
 }
 
 export type ServerEvent =
@@ -98,6 +99,8 @@ export type ServerEvent =
   | { op: 'voice_state_update'; d: VoiceState }
   | { op: 'voice_session'; d: VoiceSession }
   | { op: 'rtc_signal'; d: RtcSignal }
+  | { op: 'relationship_add'; d: Relationship }
+  | { op: 'relationship_remove'; d: { user_id: string } }
   | { op: 'pong'; d: unknown }
   | { op: 'error'; d: { code: string; message: string } };
 

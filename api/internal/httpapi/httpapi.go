@@ -66,9 +66,11 @@ func (s *Server) Handler() http.Handler {
 
 	mux.Handle("GET /v1/users", s.authed(s.listUsers))
 	mux.Handle("PATCH /v1/users/{id}", s.admin(s.updateUser))
-	mux.Handle("GET /v1/invites", s.admin(s.listInvites))
-	mux.Handle("POST /v1/invites", s.admin(s.createInvite))
-	mux.Handle("DELETE /v1/invites/{code}", s.admin(s.deleteInvite))
+
+	mux.Handle("GET /v1/friends", s.authed(s.listFriends))
+	mux.Handle("POST /v1/friends", s.authed(s.addFriend))
+	mux.Handle("PUT /v1/friends/{id}", s.authed(s.acceptFriend))
+	mux.Handle("DELETE /v1/friends/{id}", s.authed(s.removeFriend))
 
 	mux.Handle("GET /v1/channels", s.authed(s.listChannels))
 	mux.Handle("POST /v1/channels", s.admin(s.createChannel))
@@ -143,7 +145,7 @@ func cors(next http.Handler) http.Handler {
 		h := w.Header()
 		h.Set("Access-Control-Allow-Origin", "*")
 		if r.Method == http.MethodOptions {
-			h.Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+			h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 			h.Set("Access-Control-Max-Age", "86400")
 			w.WriteHeader(http.StatusNoContent)

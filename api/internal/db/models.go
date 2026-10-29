@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Channel struct {
@@ -20,12 +19,15 @@ type Channel struct {
 	CreatedAt time.Time
 }
 
-type Invite struct {
-	Code      string
-	CreatedBy uuid.UUID
-	MaxUses   pgtype.Int4
-	Uses      int32
-	ExpiresAt *time.Time
+type Friend struct {
+	UserID    uuid.UUID
+	FriendID  uuid.UUID
+	CreatedAt time.Time
+}
+
+type FriendRequest struct {
+	FromID    uuid.UUID
+	ToID      uuid.UUID
 	CreatedAt time.Time
 }
 
@@ -56,4 +58,6 @@ type User struct {
 	AvatarUrl   string
 	Role        string
 	CreatedAt   time.Time
+	Username    string
+	UsernameKey string
 }

@@ -18,41 +18,27 @@ import (
 	"discgo/api/internal/protocol"
 )
 
-// Phase 2 acceptance: first user is admin, the second needs an invite, sessions persist.
-func TestLoginAndInvites(t *testing.T) {
+// Phase 2 acceptance: first user is admin, anyone else signs up on the first
+// login, sessions persist.
+func TestLogin(t *testing.T) {
 	e := newEnv(t)
-	admin := e.mustLogin("ana@test", "")
+	admin := e.mustLogin("ana@test")
 	if admin.user.Role != "admin" {
 		t.Fatalf("first user role %q, want admin", admin.user.Role)
 	}
-
-	if _, status, code := e.devLogin("bruno@test", ""); status != http.StatusForbidden || code != "invite_required" {
-		t.Fatalf("second user without invite: %d %s", status, code)
-	}
-	if _, status, code := e.devLogin("bruno@test", "nope"); status != http.StatusForbidden || code != "invite_invalid" {
-		t.Fatalf("bad invite: %d %s", status, code)
+	bruno := e.mustLogin("bruno@test")
+	if bruno.user.Role != "member" || bruno.user.Username != "bruno@test" {
+		t.Fatalf("second user: %+v", bruno.user)
 	}
 
-	var inv protocol.Invite
-	if st := admin.call("POST", "/v1/invites", map[string]any{"max_uses": 1}, &inv); st != http.StatusCreated {
-		t.Fatalf("create invite: %d", st)
-	}
-	bruno := e.mustLogin("bruno@test", inv.Code)
-	if bruno.user.Role != "member" {
-		t.Fatalf("invited user role %q", bruno.user.Role)
-	}
-	if _, status, _ := e.devLogin("carla@test", inv.Code); status != http.StatusForbidden {
-		t.Fatalf("invite reused: %d", status)
-	}
-
-	// Existing members log in again without an invite; tokens are independent sessions.
-	again := e.mustLogin("bruno@test", "")
+	// Existing members log in again as the same user; tokens are independent sessions.
+	again := e.mustLogin("bruno@test")
 	var me protocol.Me
 	if st := again.call("GET", "/v1/me", nil, &me); st != http.StatusOK || me.ID != bruno.user.ID {
 		t.Fatalf("me: %d %+v", st, me)
 	}
-	if st := bruno.call("GET", "/v1/invites", nil, nil); st != http.StatusForbidden {
-		t.Fatalf("member listed invites: %d", st)
+	if st := bruno.call("PATCH", "/v1/users/"+admin.user.ID, map[string]string{"role": "member"}, nil); st != http.StatusForbidden {
+		t.Fatalf("member changed a role: %d", st)
 	}
 
 	if st := again.call("POST", "/v1/auth/logout", nil, nil); st != http.StatusNoContent {
@@ -77,56 +63,144 @@ func TestLoginAndInvites(t *testing.T) {
 // The Google flow end to end against a fake OIDC provider.
 func TestGoogleLogin(t *testing.T) {
 	e := newEnv(t)
-	e.google.Sub, e.google.Email, e.google.Name = "g-123", "dani@gmail.test", "Dani"
+	login := func(sub, email, name string) (*client, string) {
+		t.Helper()
+		e.google.Sub, e.google.Email, e.google.Name = sub, email, name
+		// Browser: /start -> provider -> /callback -> page that opens discgo://auth?code=...
+		res, err := http.Get(e.srv.URL + "/v1/auth/google/start")
+		if err != nil {
+			t.Fatal(err)
+		}
+		page, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		m := regexp.MustCompile(`discgo://auth\?code=([A-Za-z0-9_%-]+)`).FindSubmatch(page)
+		if res.StatusCode != http.StatusOK || m == nil {
+			t.Fatalf("callback page: %d %s", res.StatusCode, page)
+		}
+		code, _ := url.QueryUnescape(string(m[1]))
+		return e.exchange(code), string(page)
+	}
 
-	// Browser: /start -> provider -> /callback -> page that opens discgo://auth?code=...
-	res, err := http.Get(e.srv.URL + "/v1/auth/google/start")
-	if err != nil {
-		t.Fatal(err)
-	}
-	page, _ := io.ReadAll(res.Body)
-	res.Body.Close()
-	m := regexp.MustCompile(`discgo://auth\?code=([A-Za-z0-9_%-]+)`).FindSubmatch(page)
-	if res.StatusCode != http.StatusOK || m == nil {
-		t.Fatalf("callback page: %d %s", res.StatusCode, page)
-	}
-	code, _ := url.QueryUnescape(string(m[1]))
-	c := e.exchange(code)
-	if c.user.DisplayName != "Dani" || c.user.Email != "dani@gmail.test" || c.user.Role != "admin" {
+	c, page := login("g-123", "Dani.Rocha@gmail.com", "Dani Rocha")
+	if c.user.DisplayName != "Dani Rocha" || c.user.Username != "dani.rocha" || c.user.Role != "admin" {
 		t.Fatalf("user: %+v", c.user)
 	}
-
-	// A second Google account without invite gets the explanatory page.
-	e.google.Sub, e.google.Email = "g-456", "eva@gmail.test"
-	res, err = http.Get(e.srv.URL + "/v1/auth/google/start")
-	if err != nil {
-		t.Fatal(err)
+	// The Google photo, asked for at 256 px.
+	if c.user.AvatarURL != "https://lh3.googleusercontent.com/a/photo=s256-c" {
+		t.Fatalf("avatar %q", c.user.AvatarURL)
 	}
-	page, _ = io.ReadAll(res.Body)
-	res.Body.Close()
-	if res.StatusCode != http.StatusForbidden || !strings.Contains(string(page), "convite") {
-		t.Fatalf("no-invite page: %d %s", res.StatusCode, page)
+	if !strings.Contains(page, "Tudo certo, Dani!") || !strings.Contains(page, "dani.rocha") {
+		t.Fatalf("success page: %s", page)
 	}
 
-	// With an invite in /start it works.
-	inv := e.invite(c)
-	e.google.Sub, e.google.Email = "g-456", "eva@gmail.test"
-	res, err = http.Get(e.srv.URL + "/v1/auth/google/start?invite=" + inv)
-	if err != nil {
-		t.Fatal(err)
+	// Any other Google account signs up directly; other domains keep the whole address.
+	eva, _ := login("g-456", "eva@empresa.com.br", "Eva")
+	if eva.user.Role != "member" || eva.user.Username != "eva@empresa.com.br" {
+		t.Fatalf("second user: %+v", eva.user)
 	}
-	page, _ = io.ReadAll(res.Body)
-	res.Body.Close()
-	if m = regexp.MustCompile(`discgo://auth\?code=([A-Za-z0-9_%-]+)`).FindSubmatch(page); m == nil {
-		t.Fatalf("invited login failed: %d %s", res.StatusCode, page)
+	if again, _ := login("g-123", "Dani.Rocha@gmail.com", "Dani Rocha"); again.user.ID != c.user.ID {
+		t.Fatalf("same Google account, new user: %+v", again.user)
+	}
+}
+
+// Friends: requests by username, accepted by the other side, pushed to both.
+func TestFriends(t *testing.T) {
+	e := newEnv(t)
+	ana := e.mustLogin("ana.silva@gmail.com")
+	bruno := e.mustLogin("bruno@gmail.com")
+	carla := e.mustLogin("carla@gmail.com")
+	wsAna, wsBruno := ana.connect(true), bruno.connect(true)
+
+	add := func(c *client, username string) (int, string) {
+		t.Helper()
+		var out struct {
+			Error struct{ Code string } `json:"error"`
+		}
+		st := c.call("POST", "/v1/friends", map[string]string{"username": username}, &out)
+		return st, out.Error.Code
+	}
+	for _, tc := range []struct {
+		username string
+		status   int
+		code     string
+	}{
+		{"ninguem", http.StatusNotFound, "user_not_found"},
+		{"bruno", http.StatusBadRequest, "self_request"},
+		{"", http.StatusBadRequest, "bad_request"},
+	} {
+		if st, code := add(bruno, tc.username); st != tc.status || code != tc.code {
+			t.Fatalf("add %q: %d %s", tc.username, st, code)
+		}
+	}
+
+	// Gmail ignores dots and case: "AnaSilva" finds ana.silva.
+	if st, _ := add(bruno, "AnaSilva"); st != http.StatusCreated {
+		t.Fatalf("request: %d", st)
+	}
+	var rel protocol.Relationship
+	wsAna.expect(protocol.OpRelationshipAdd, &rel)
+	if rel.Type != "incoming" || rel.User.ID != bruno.user.ID || rel.User.Username != "bruno" {
+		t.Fatalf("ana got %+v", rel)
+	}
+	wsBruno.expect(protocol.OpRelationshipAdd, &rel)
+	if rel.Type != "outgoing" || rel.User.ID != ana.user.ID {
+		t.Fatalf("bruno got %+v", rel)
+	}
+	if st, code := add(bruno, "ana.silva@gmail.com"); st != http.StatusConflict || code != "already_requested" {
+		t.Fatalf("second request: %d %s", st, code)
+	}
+
+	if st := ana.call("PUT", "/v1/friends/"+bruno.user.ID, nil, &rel); st != http.StatusOK || rel.Type != "friend" {
+		t.Fatalf("accept: %d %+v", st, rel)
+	}
+	wsBruno.expectWhere(protocol.OpRelationshipAdd, &rel, func() bool { return rel.Type == "friend" })
+	if st, code := add(ana, "bruno"); st != http.StatusConflict || code != "already_friends" {
+		t.Fatalf("request to a friend: %d %s", st, code)
+	}
+	var list []protocol.Relationship
+	if st := bruno.call("GET", "/v1/friends", nil, &list); st != http.StatusOK || len(list) != 1 || list[0].Type != "friend" || list[0].User.ID != ana.user.ID {
+		t.Fatalf("bruno's friends: %d %+v", st, list)
+	}
+
+	// Crossing requests end as a friendship; ready carries the relationships.
+	if st, _ := add(carla, "bruno"); st != http.StatusCreated {
+		t.Fatalf("carla -> bruno: %d", st)
+	}
+	if st, _ := add(bruno, "carla"); st != http.StatusOK {
+		t.Fatalf("bruno -> carla: %d", st)
+	}
+	ready := bruno.connect(true).ready
+	if len(ready.Relationships) != 2 || ready.Relationships[0].Type != "friend" || ready.Relationships[1].Type != "friend" {
+		t.Fatalf("ready relationships: %+v", ready.Relationships)
+	}
+
+	// Removing: both sides are told; a second removal finds nothing.
+	if st := ana.call("DELETE", "/v1/friends/"+bruno.user.ID, nil, nil); st != http.StatusNoContent {
+		t.Fatalf("remove: %d", st)
+	}
+	var gone protocol.RelationshipRemove
+	wsBruno.expect(protocol.OpRelationshipRemove, &gone)
+	if gone.UserID != ana.user.ID {
+		t.Fatalf("bruno got remove %+v", gone)
+	}
+	if st := bruno.call("DELETE", "/v1/friends/"+ana.user.ID, nil, nil); st != http.StatusNotFound {
+		t.Fatalf("second remove: %d", st)
+	}
+	// Declining a request deletes it.
+	add(ana, "carla")
+	if st := carla.call("DELETE", "/v1/friends/"+ana.user.ID, nil, nil); st != http.StatusNoContent {
+		t.Fatalf("decline: %d", st)
+	}
+	if st := carla.call("PUT", "/v1/friends/"+ana.user.ID, nil, nil); st != http.StatusNotFound {
+		t.Fatalf("accept after decline: %d", st)
 	}
 }
 
 // Phase 3 acceptance: two clients get message_create in under 100 ms.
 func TestMessagesAndEvents(t *testing.T) {
 	e := newEnv(t)
-	ana := e.mustLogin("ana@test", "")
-	bruno := e.mustLogin("bruno@test", e.invite(ana))
+	ana := e.mustLogin("ana@test")
+	bruno := e.mustLogin("bruno@test")
 
 	var ch protocol.Channel
 	if st := bruno.call("POST", "/v1/channels", map[string]string{"kind": "text", "name": "geral"}, nil); st != http.StatusForbidden {
@@ -210,10 +284,10 @@ func TestMessagesAndEvents(t *testing.T) {
 
 func TestPresenceAndMembers(t *testing.T) {
 	e := newEnv(t)
-	ana := e.mustLogin("ana@test", "")
+	ana := e.mustLogin("ana@test")
 	wa := ana.connect(true)
 
-	bruno := e.mustLogin("bruno@test", e.invite(ana))
+	bruno := e.mustLogin("bruno@test")
 	var added protocol.Member
 	wa.expect(protocol.OpMemberAdd, &added)
 	if added.ID != bruno.user.ID {
@@ -234,10 +308,9 @@ func TestPresenceAndMembers(t *testing.T) {
 // (here 300 ms) after the third leaves, and p2p_failed forces sfu.
 func TestVoiceModes(t *testing.T) {
 	e := newEnv(t)
-	ana := e.mustLogin("ana@test", "")
-	inv := func() string { return e.invite(ana) }
-	bruno := e.mustLogin("bruno@test", inv())
-	carla := e.mustLogin("carla@test", inv())
+	ana := e.mustLogin("ana@test")
+	bruno := e.mustLogin("bruno@test")
+	carla := e.mustLogin("carla@test")
 	var vc protocol.Channel
 	ana.call("POST", "/v1/channels", map[string]string{"kind": "voice", "name": "Sala"}, &vc)
 
@@ -328,9 +401,9 @@ func statusOf(ms []protocol.Member, id string) string {
 // LiveKit participant_left without a voice_leave removes the user after the grace period.
 func TestLiveKitWebhook(t *testing.T) {
 	e := newEnv(t)
-	ana := e.mustLogin("ana@test", "")
-	bruno := e.mustLogin("bruno@test", e.invite(ana))
-	carla := e.mustLogin("carla@test", e.invite(ana))
+	ana := e.mustLogin("ana@test")
+	bruno := e.mustLogin("bruno@test")
+	carla := e.mustLogin("carla@test")
 	var vc protocol.Channel
 	ana.call("POST", "/v1/channels", map[string]string{"kind": "voice", "name": "Sala"}, &vc)
 	wa, wb, wc := ana.connect(true), bruno.connect(true), carla.connect(true)

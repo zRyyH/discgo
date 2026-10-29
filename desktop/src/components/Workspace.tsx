@@ -5,6 +5,7 @@ import { useSettings } from '../stores/settings';
 import { useUi } from '../stores/ui';
 import { Composer } from './Composer';
 import { DebugOverlay } from './DebugOverlay';
+import { FriendsPane } from './Friends';
 import { MediaStage } from './MediaStage';
 import { VoiceBar } from './VoiceBar';
 import { useVoice } from '../stores/voice';
@@ -46,6 +47,14 @@ export function Workspace() {
 function Main() {
   const view = useUi((s) => s.view);
   const voiceChannel = useVoice((s) => s.channelId);
+  if (view === 'friends') {
+    return (
+      <div className="relative flex min-w-0 flex-1 flex-col bg-bg-2">
+        <FriendsPane />
+        <VoiceBarSpacer />
+      </div>
+    );
+  }
   if (view === 'call' && voiceChannel) {
     return (
       <div className="relative flex min-w-0 flex-1 flex-col">

@@ -23,9 +23,9 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 }
 
 const createUser = `-- name: CreateUser :one
-insert into users (id, google_sub, email, display_name, avatar_url, role)
-values ($1, $2, $3, $4, $5, $6)
-returning id, google_sub, email, display_name, avatar_url, role, created_at
+insert into users (id, google_sub, email, display_name, avatar_url, role, username, username_key)
+values ($1, $2, $3, $4, $5, $6, $7, $8)
+returning id, google_sub, email, display_name, avatar_url, role, created_at, username, username_key
 `
 
 type CreateUserParams struct {
@@ -35,6 +35,8 @@ type CreateUserParams struct {
 	DisplayName string
 	AvatarUrl   string
 	Role        string
+	Username    string
+	UsernameKey string
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
@@ -45,6 +47,8 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		arg.DisplayName,
 		arg.AvatarUrl,
 		arg.Role,
+		arg.Username,
+		arg.UsernameKey,
 	)
 	var i User
 	err := row.Scan(
@@ -55,12 +59,14 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.AvatarUrl,
 		&i.Role,
 		&i.CreatedAt,
+		&i.Username,
+		&i.UsernameKey,
 	)
 	return i, err
 }
 
 const getUser = `-- name: GetUser :one
-select id, google_sub, email, display_name, avatar_url, role, created_at from users where id = $1
+select id, google_sub, email, display_name, avatar_url, role, created_at, username, username_key from users where id = $1
 `
 
 func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
@@ -74,12 +80,14 @@ func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.AvatarUrl,
 		&i.Role,
 		&i.CreatedAt,
+		&i.Username,
+		&i.UsernameKey,
 	)
 	return i, err
 }
 
 const getUserByGoogleSub = `-- name: GetUserByGoogleSub :one
-select id, google_sub, email, display_name, avatar_url, role, created_at from users where google_sub = $1
+select id, google_sub, email, display_name, avatar_url, role, created_at, username, username_key from users where google_sub = $1
 `
 
 func (q *Queries) GetUserByGoogleSub(ctx context.Context, googleSub string) (User, error) {
@@ -93,12 +101,35 @@ func (q *Queries) GetUserByGoogleSub(ctx context.Context, googleSub string) (Use
 		&i.AvatarUrl,
 		&i.Role,
 		&i.CreatedAt,
+		&i.Username,
+		&i.UsernameKey,
+	)
+	return i, err
+}
+
+const getUserByUsernameKey = `-- name: GetUserByUsernameKey :one
+select id, google_sub, email, display_name, avatar_url, role, created_at, username, username_key from users where username_key = $1
+`
+
+func (q *Queries) GetUserByUsernameKey(ctx context.Context, usernameKey string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByUsernameKey, usernameKey)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.GoogleSub,
+		&i.Email,
+		&i.DisplayName,
+		&i.AvatarUrl,
+		&i.Role,
+		&i.CreatedAt,
+		&i.Username,
+		&i.UsernameKey,
 	)
 	return i, err
 }
 
 const listUsers = `-- name: ListUsers :many
-select id, google_sub, email, display_name, avatar_url, role, created_at from users order by display_name, id
+select id, google_sub, email, display_name, avatar_url, role, created_at, username, username_key from users order by display_name, id
 `
 
 func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
@@ -118,6 +149,8 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 			&i.AvatarUrl,
 			&i.Role,
 			&i.CreatedAt,
+			&i.Username,
+			&i.UsernameKey,
 		); err != nil {
 			return nil, err
 		}
@@ -133,7 +166,7 @@ const lockUserCreation = `-- name: LockUserCreation :exec
 select pg_advisory_xact_lock(7461001)
 `
 
-// Serializes "first user becomes admin" between concurrent logins.
+// Serializes "first user becomes admin" and username picking between concurrent logins.
 func (q *Queries) LockUserCreation(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, lockUserCreation)
 	return err
@@ -142,7 +175,7 @@ func (q *Queries) LockUserCreation(ctx context.Context) error {
 const updateUserProfile = `-- name: UpdateUserProfile :one
 update users set email = $2, display_name = $3, avatar_url = $4
 where id = $1
-returning id, google_sub, email, display_name, avatar_url, role, created_at
+returning id, google_sub, email, display_name, avatar_url, role, created_at, username, username_key
 `
 
 type UpdateUserProfileParams struct {
@@ -168,12 +201,14 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		&i.AvatarUrl,
 		&i.Role,
 		&i.CreatedAt,
+		&i.Username,
+		&i.UsernameKey,
 	)
 	return i, err
 }
 
 const updateUserRole = `-- name: UpdateUserRole :one
-update users set role = $2 where id = $1 returning id, google_sub, email, display_name, avatar_url, role, created_at
+update users set role = $2 where id = $1 returning id, google_sub, email, display_name, avatar_url, role, created_at, username, username_key
 `
 
 type UpdateUserRoleParams struct {
@@ -192,6 +227,19 @@ func (q *Queries) UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) 
 		&i.AvatarUrl,
 		&i.Role,
 		&i.CreatedAt,
+		&i.Username,
+		&i.UsernameKey,
 	)
 	return i, err
+}
+
+const usernameKeyExists = `-- name: UsernameKeyExists :one
+select exists(select 1 from users where username_key = $1)
+`
+
+func (q *Queries) UsernameKeyExists(ctx context.Context, usernameKey string) (bool, error) {
+	row := q.db.QueryRow(ctx, usernameKeyExists, usernameKey)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }

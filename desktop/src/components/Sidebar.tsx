@@ -1,11 +1,13 @@
 import { memo, useMemo } from 'react';
-import { Hash, Headphones, HeadphoneOff, Mic, MicOff, Plus, Settings, Volume2 } from 'lucide-react';
+import { Hash, Headphones, HeadphoneOff, Mic, MicOff, Plus, Settings, Users, Volume2 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import type { Channel } from '../shared/protocol';
 import { useCommunity } from '../stores/community';
+import { useIncomingCount } from '../stores/friends';
 import { useUi } from '../stores/ui';
 import { useVoice } from '../stores/voice';
 import { useSpeaking } from '../stores/speaking';
+import { CountBadge } from './Friends';
 import { VolumeMenu } from './MediaStage';
 import { Avatar, ICON, IconButton, cx } from './ui';
 
@@ -19,6 +21,8 @@ export function Sidebar() {
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-bg-1">
       <nav className="flex-1 overflow-y-auto px-2 py-3">
+        <FriendsRow />
+        <div className="mx-2 my-3 h-px bg-border" />
         <Group title="Texto" onAdd={isAdmin ? () => openSettings('channels') : undefined} />
         {text.map((c) => (
           <TextChannelRow key={c.id} channel={c} />
@@ -45,8 +49,28 @@ function Group({ title, onAdd }: { title: string; onAdd?: () => void }) {
   );
 }
 
+function FriendsRow() {
+  const active = useUi((s) => s.view === 'friends');
+  const setView = useUi((s) => s.setView);
+  const incoming = useIncomingCount();
+  return (
+    <button
+      type="button"
+      onClick={() => setView('friends')}
+      className={cx(
+        'flex h-9 w-full items-center gap-2.5 rounded-md px-2 text-left text-body font-medium transition-colors duration-150',
+        active ? 'bg-bg-3 text-text-1' : 'text-text-2 hover:bg-bg-2 hover:text-text-1',
+      )}
+    >
+      <Users {...ICON} className="shrink-0" />
+      <span className="flex-1 truncate">Amigos</span>
+      {incoming > 0 && <CountBadge n={incoming} />}
+    </button>
+  );
+}
+
 const TextChannelRow = memo(function TextChannelRow({ channel }: { channel: Channel }) {
-  const active = useUi((s) => s.channelId === channel.id);
+  const active = useUi((s) => s.view !== 'friends' && s.channelId === channel.id);
   const select = useUi((s) => s.selectChannel);
   return (
     <button

@@ -19,16 +19,18 @@ func TestContractFixtures(t *testing.T) {
 	w, h := 640, 480
 	fixtures := map[string]any{
 		"ready": NewFrame(OpReady, Ready{
-			User:      Me{User: User{ID: "0192f5d2-7c1e-7a10-9f00-0000000000a1", DisplayName: "Ana", AvatarURL: "", Role: "admin"}, Email: "ana@example.com"},
+			User:      Me{User: User{ID: "0192f5d2-7c1e-7a10-9f00-0000000000a1", Username: "ana.silva", DisplayName: "Ana", AvatarURL: "", Role: "admin"}, Email: "ana.silva@gmail.com"},
 			Community: Community{Name: "DiscGo"},
 			Members: []Member{
-				{User: User{ID: "0192f5d2-7c1e-7a10-9f00-0000000000a1", DisplayName: "Ana", Role: "admin"}, Status: "online"},
-				{User: User{ID: "0192f5d2-7c1e-7a10-9f00-0000000000b2", DisplayName: "Bruno", Role: "member"}, Status: "offline"},
+				{User: User{ID: "0192f5d2-7c1e-7a10-9f00-0000000000a1", Username: "ana.silva", DisplayName: "Ana", Role: "admin"}, Status: "online"},
+				{User: User{ID: "0192f5d2-7c1e-7a10-9f00-0000000000b2", Username: "bruno", DisplayName: "Bruno", Role: "member"}, Status: "offline"},
 			},
-			Channels:     []Channel{{ID: ch, Kind: "voice", Name: "Sala", Position: 0}},
-			VoiceStates:  []VoiceState{{UserID: "0192f5d2-7c1e-7a10-9f00-0000000000a1", ChannelID: &ch, SelfMute: true}},
-			VoiceSession: &VoiceSession{ChannelID: ch, SessionID: "0192f5d2-7c1e-7a10-9f00-00000000s001", Mode: "idle"},
+			Channels:      []Channel{{ID: ch, Kind: "voice", Name: "Sala", Position: 0}},
+			VoiceStates:   []VoiceState{{UserID: "0192f5d2-7c1e-7a10-9f00-0000000000a1", ChannelID: &ch, SelfMute: true}},
+			VoiceSession:  &VoiceSession{ChannelID: ch, SessionID: "0192f5d2-7c1e-7a10-9f00-00000000s001", Mode: "idle"},
+			Relationships: []Relationship{{User: User{ID: "0192f5d2-7c1e-7a10-9f00-0000000000b2", Username: "bruno", DisplayName: "Bruno", Role: "member"}, Type: "incoming", Since: edited}},
 		}),
+		"relationship_remove": NewFrame(OpRelationshipRemove, RelationshipRemove{UserID: "0192f5d2-7c1e-7a10-9f00-0000000000b2"}),
 		"message_create": NewFrame(OpMessageCreate, Message{
 			ID: "0192f5d2-7c1e-7a10-9f00-00000000m001", ChannelID: ch, AuthorID: "0192f5d2-7c1e-7a10-9f00-0000000000a1",
 			Content: "oi", CreatedAt: time.Date(2026, 10, 29, 18, 0, 0, 0, time.UTC), EditedAt: &edited,

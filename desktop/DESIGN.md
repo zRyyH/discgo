@@ -47,6 +47,10 @@ popovers, tooltips and dialogs (`shadow-popover`). Icons: Lucide 18 px, stroke 1
   last own message, files by button, drag-and-drop or paste, with upload progress.
 - Voice channels list their participants under the channel (avatar 20 px, mute/deafen
   icon, 2 px `ok` ring while speaking).
+- Sign-in: one card on `bg-0` with two static glows and a faded dot grid; Google's light "Continuar com o Google"
+  button (white, official G); while the browser login runs the card shows the three steps and "Abrir de novo".
+- Friends (sidebar "Amigos", badge with pending requests): tabs Online / Todos / Pendentes and an accent
+  "Adicionar amigo" tab with the username field and the user's own username to copy.
 - Empty states: one icon and one line of text. Skeletons: flat `bg-3` blocks, no shimmer.
 
 ## Motion and weight (PLAN 7.6)

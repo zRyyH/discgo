@@ -1,6 +1,7 @@
 // Package auth implements login (PLAN 3.1): Google OAuth code flow in the
 // system browser, a one-time code handed to the app through the discgo://
-// deep link, and opaque 30-day sessions stored as SHA-256 hashes.
+// deep link, and opaque 30-day sessions stored as SHA-256 hashes. Any Google
+// account can sign up; the account is created on its first login.
 package auth
 
 import (
@@ -10,6 +11,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,11 +28,9 @@ import (
 )
 
 var (
-	ErrInviteRequired = errors.New("invite required")
-	ErrInviteInvalid  = errors.New("invite invalid, expired or used up")
-	ErrInvalidCode    = errors.New("login code invalid or expired")
-	ErrUnauthorized   = errors.New("invalid or expired session")
-	ErrNotConfigured  = errors.New("google login is not configured")
+	ErrInvalidCode   = errors.New("login code invalid or expired")
+	ErrUnauthorized  = errors.New("invalid or expired session")
+	ErrNotConfigured = errors.New("google login is not configured")
 )
 
 const (
@@ -74,7 +76,6 @@ type Service struct {
 }
 
 type pendingLogin struct {
-	invite  string
 	nonce   string
 	expires time.Time
 }
@@ -114,8 +115,8 @@ func (s *Service) oauth(ctx context.Context) (*oauth2.Config, *oidc.Provider, er
 	}, s.provider, nil
 }
 
-// GoogleAuthURL starts a login; invite is only needed on the first login.
-func (s *Service) GoogleAuthURL(ctx context.Context, invite string) (string, error) {
+// GoogleAuthURL starts a login.
+func (s *Service) GoogleAuthURL(ctx context.Context) (string, error) {
 	conf, _, err := s.oauth(ctx)
 	if err != nil {
 		return "", err
@@ -123,35 +124,36 @@ func (s *Service) GoogleAuthURL(ctx context.Context, invite string) (string, err
 	state, nonce := randomToken(24), randomToken(24)
 	s.mu.Lock()
 	s.gcLocked()
-	s.states[state] = pendingLogin{invite: strings.TrimSpace(invite), nonce: nonce, expires: time.Now().Add(stateTTL)}
+	s.states[state] = pendingLogin{nonce: nonce, expires: time.Now().Add(stateTTL)}
 	s.mu.Unlock()
 	return conf.AuthCodeURL(state, oidc.Nonce(nonce), oauth2.SetAuthURLParam("prompt", "select_account")), nil
 }
 
-// GoogleCallback finishes the browser flow and returns a one-time code for the app.
-func (s *Service) GoogleCallback(ctx context.Context, state, code string) (string, error) {
+// GoogleCallback finishes the browser flow and returns a one-time code for the
+// app, and the member it logs in.
+func (s *Service) GoogleCallback(ctx context.Context, state, code string) (string, db.User, error) {
 	s.mu.Lock()
 	pending, ok := s.states[state]
 	delete(s.states, state)
 	s.mu.Unlock()
 	if !ok || time.Now().After(pending.expires) {
-		return "", errors.New("login expired, start again from the app")
+		return "", db.User{}, errors.New("login expired, start again from the app")
 	}
 	conf, provider, err := s.oauth(ctx)
 	if err != nil {
-		return "", err
+		return "", db.User{}, err
 	}
 	tok, err := conf.Exchange(ctx, code)
 	if err != nil {
-		return "", fmt.Errorf("code exchange: %w", err)
+		return "", db.User{}, fmt.Errorf("code exchange: %w", err)
 	}
 	rawID, _ := tok.Extra("id_token").(string)
 	idToken, err := provider.Verifier(&oidc.Config{ClientID: s.cfg.ClientID}).Verify(ctx, rawID)
 	if err != nil {
-		return "", fmt.Errorf("id_token: %w", err)
+		return "", db.User{}, fmt.Errorf("id_token: %w", err)
 	}
 	if idToken.Nonce != pending.nonce {
-		return "", errors.New("id_token nonce mismatch")
+		return "", db.User{}, errors.New("id_token nonce mismatch")
 	}
 	var claims struct {
 		Email         string `json:"email"`
@@ -160,22 +162,36 @@ func (s *Service) GoogleCallback(ctx context.Context, state, code string) (strin
 		Picture       string `json:"picture"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
-		return "", err
+		return "", db.User{}, err
 	}
 	if !claims.EmailVerified {
-		return "", errors.New("google account email is not verified")
+		return "", db.User{}, errors.New("google account email is not verified")
 	}
 	return s.Login(ctx, Identity{
 		Subject:     idToken.Subject,
 		Email:       claims.Email,
 		DisplayName: claims.Name,
-		AvatarURL:   claims.Picture,
-	}, pending.invite)
+		AvatarURL:   GooglePhoto(claims.Picture),
+	})
 }
 
-// Login resolves an identity to a member (first user becomes admin, everyone
-// else needs an invite the first time) and issues a one-time code.
-func (s *Service) Login(ctx context.Context, id Identity, invite string) (string, error) {
+// googlePhotoSize matches the size suffix of a Google profile photo URL
+// (".../photo=s96-c"); the same photo is served at any size.
+var googlePhotoSize = regexp.MustCompile(`=s\d+(-c)?$`)
+
+// GooglePhoto asks for the Google account photo at 256 px instead of the 96 px
+// the ID token links to, so large avatars stay sharp.
+func GooglePhoto(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || !strings.HasSuffix(u.Hostname(), ".googleusercontent.com") {
+		return raw
+	}
+	return googlePhotoSize.ReplaceAllString(raw, "=s256-c")
+}
+
+// Login resolves an identity to a member, creating it on the first login (the
+// very first member becomes admin), and issues a one-time code.
+func (s *Service) Login(ctx context.Context, id Identity) (string, db.User, error) {
 	if id.DisplayName == "" {
 		id.DisplayName, _, _ = strings.Cut(id.Email, "@")
 	}
@@ -208,24 +224,21 @@ func (s *Service) Login(ctx context.Context, id Identity, invite string) (string
 		role := "admin"
 		if count > 0 {
 			role = "member"
-			if invite == "" {
-				return ErrInviteRequired
-			}
-			if _, err := q.ClaimInvite(ctx, invite); errors.Is(err, pgx.ErrNoRows) {
-				return ErrInviteInvalid
-			} else if err != nil {
-				return err
-			}
+		}
+		username, key, err := freeUsername(ctx, q, id.Email)
+		if err != nil {
+			return err
 		}
 		user, err = q.CreateUser(ctx, db.CreateUserParams{
 			ID: uuid.Must(uuid.NewV7()), GoogleSub: id.Subject, Email: id.Email,
 			DisplayName: id.DisplayName, AvatarUrl: id.AvatarURL, Role: role,
+			Username: username, UsernameKey: key,
 		})
 		created = true
 		return err
 	})
 	if err != nil {
-		return "", err
+		return "", db.User{}, err
 	}
 	if (created || changed) && s.onChanged != nil {
 		s.onChanged(user, created)
@@ -235,7 +248,47 @@ func (s *Service) Login(ctx context.Context, id Identity, invite string) (string
 	s.gcLocked()
 	s.codes[code] = issuedCode{userID: user.ID, expires: time.Now().Add(codeTTL)}
 	s.mu.Unlock()
-	return code, nil
+	return code, user, nil
+}
+
+var gmailDomains = map[string]bool{"gmail.com": true, "googlemail.com": true}
+
+// Username derives the public username from an account email: the Gmail
+// address without "@gmail.com", or the whole address for other domains. key is
+// the lookup form (see UsernameKey).
+func Username(email string) (username, key string) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if local, domain, ok := strings.Cut(email, "@"); ok && gmailDomains[domain] {
+		return local, strings.ReplaceAll(local, ".", "")
+	}
+	return email, email
+}
+
+// UsernameKey normalizes what someone typed to find a user. Gmail ignores dots
+// and case, so "Joao.Silva", "joaosilva" and "joao.silva@gmail.com" are the same.
+func UsernameKey(input string) string {
+	s := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(input), "@"))
+	if local, domain, ok := strings.Cut(s, "@"); !ok || gmailDomains[domain] {
+		return strings.ReplaceAll(local, ".", "")
+	}
+	return s
+}
+
+// freeUsername returns the username for a new account. Two accounts only share
+// a key when an address was given to a new Google account (Workspace) or in dev
+// logins; the newcomer then gets a number appended.
+func freeUsername(ctx context.Context, q *db.Queries, email string) (string, string, error) {
+	username, key := Username(email)
+	for n := 1; ; n++ {
+		u, k := username, key
+		if n > 1 {
+			u, k = username+strconv.Itoa(n), key+strconv.Itoa(n)
+		}
+		taken, err := q.UsernameKeyExists(ctx, k)
+		if err != nil || !taken {
+			return u, k, err
+		}
+	}
 }
 
 // Exchange trades a one-time code for a session token.
@@ -303,19 +356,6 @@ func randomToken(n int) string {
 		panic(err)
 	}
 	return base64.RawURLEncoding.EncodeToString(b)
-}
-
-// NewInviteCode returns a short invite code: 10 chars from 32 unambiguous symbols (50 bits).
-func NewInviteCode() string {
-	const alphabet = "abcdefghjkmnpqrstuvwxyz023456789" // no i, l, o, 1
-	b := make([]byte, 10)
-	if _, err := rand.Read(b); err != nil {
-		panic(err)
-	}
-	for i := range b {
-		b[i] = alphabet[b[i]&31]
-	}
-	return string(b)
 }
 
 func hashToken(token string) []byte {

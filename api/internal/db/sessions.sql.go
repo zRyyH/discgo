@@ -55,7 +55,7 @@ func (q *Queries) DeleteSession(ctx context.Context, tokenHash []byte) error {
 }
 
 const getSessionUser = `-- name: GetSessionUser :one
-select sessions.id, sessions.user_id, sessions.token_hash, sessions.created_at, sessions.expires_at, sessions.last_used_at, users.id, users.google_sub, users.email, users.display_name, users.avatar_url, users.role, users.created_at
+select sessions.id, sessions.user_id, sessions.token_hash, sessions.created_at, sessions.expires_at, sessions.last_used_at, users.id, users.google_sub, users.email, users.display_name, users.avatar_url, users.role, users.created_at, users.username, users.username_key
 from sessions join users on users.id = sessions.user_id
 where sessions.token_hash = $1 and sessions.expires_at > now()
 `
@@ -82,6 +82,8 @@ func (q *Queries) GetSessionUser(ctx context.Context, tokenHash []byte) (GetSess
 		&i.User.AvatarUrl,
 		&i.User.Role,
 		&i.User.CreatedAt,
+		&i.User.Username,
+		&i.User.UsernameKey,
 	)
 	return i, err
 }

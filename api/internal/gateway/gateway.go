@@ -73,6 +73,16 @@ func (h *Hub) Broadcast(op string, d any) {
 	}
 }
 
+// SendToUser sends an event to every connection of one user.
+func (h *Hub) SendToUser(userID uuid.UUID, op string, d any) {
+	msg := encode(op, d)
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, c := range h.byUser[userID] {
+		h.trySend(c, msg)
+	}
+}
+
 // Online reports whether the user has at least one connection.
 func (h *Hub) Online(userID uuid.UUID) bool {
 	h.mu.RLock()
@@ -181,12 +191,20 @@ func (h *Hub) ready(ctx context.Context, user db.User) (protocol.Ready, error) {
 	if err != nil {
 		return protocol.Ready{}, err
 	}
+	rels, err := h.Queries.ListRelationships(ctx, user.ID)
+	if err != nil {
+		return protocol.Ready{}, err
+	}
 	out := protocol.Ready{
-		User:        protocol.FromMe(user),
-		Community:   protocol.Community{Name: h.Community},
-		Members:     make([]protocol.Member, 0, len(users)),
-		Channels:    make([]protocol.Channel, 0, len(channels)),
-		VoiceStates: []protocol.VoiceState{},
+		User:          protocol.FromMe(user),
+		Community:     protocol.Community{Name: h.Community},
+		Members:       make([]protocol.Member, 0, len(users)),
+		Channels:      make([]protocol.Channel, 0, len(channels)),
+		VoiceStates:   []protocol.VoiceState{},
+		Relationships: make([]protocol.Relationship, 0, len(rels)),
+	}
+	for _, r := range rels {
+		out.Relationships = append(out.Relationships, protocol.FromRelationship(r.User, r.Kind, r.Since))
 	}
 	for _, u := range users {
 		status := "offline"

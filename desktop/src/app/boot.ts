@@ -7,6 +7,7 @@ import { play } from '../lib/sounds';
 import type { ServerEvent } from '../shared/protocol';
 import { onDeepLink } from '../shared/shell';
 import { useCommunity } from '../stores/community';
+import { useFriends } from '../stores/friends';
 import { useMessages } from '../stores/messages';
 import { useSession } from '../stores/session';
 import { useSettings } from '../stores/settings';
@@ -25,18 +26,17 @@ export async function boot() {
   gateway.on((ev) => {
     voiceSounds(ev);
     useCommunity.getState().apply(ev);
+    useFriends.getState().apply(ev);
     useMessages.getState().apply(ev);
     useVoice.getState().apply(ev, useCommunity.getState().me?.id);
     if (ev.op === 'rtc_signal') onRtcSignal(ev.d);
   });
 
   await onDeepLink((url) => {
-    // discgo://auth?code=… after the browser login; discgo://invite/<code> from an invite link.
+    // discgo://auth?code=… after the browser login.
     if (url.host === 'auth') {
       const code = url.searchParams.get('code');
       if (code) void useSession.getState().loginWithCode(code);
-    } else if (url.host === 'invite') {
-      useSession.getState().setInvite(url.pathname.replace(/^\//, ''));
     }
   }).catch(() => {});
 

@@ -1,5 +1,5 @@
 // REST client (PLAN 5.2). Errors come back as {"error":{"code","message"}}.
-import type { Attachment, Channel, Invite, Me, Member, Message, User } from '../shared/protocol';
+import type { Attachment, Channel, Me, Member, Message, Relationship, User } from '../shared/protocol';
 
 export const API_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
 
@@ -48,20 +48,21 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 export const api = {
-  googleStartUrl: (invite: string) =>
-    `${API_URL}/v1/auth/google/start${invite ? `?invite=${encodeURIComponent(invite)}` : ''}`,
-  devLogin: (email: string, name: string, invite: string) =>
-    request<{ code: string }>('POST', '/v1/auth/dev', { email, name, invite }),
+  googleStartUrl: () => `${API_URL}/v1/auth/google/start`,
+  devLogin: (email: string, name: string) => request<{ code: string }>('POST', '/v1/auth/dev', { email, name }),
   exchange: (code: string) => request<{ token: string; user: Me }>('POST', '/v1/auth/exchange', { code }),
   logout: () => request<void>('POST', '/v1/auth/logout'),
   me: () => request<Me>('GET', '/v1/me'),
 
   users: () => request<Member[]>('GET', '/v1/users'),
   setRole: (id: string, role: User['role']) => request<User>('PATCH', `/v1/users/${id}`, { role }),
-  invites: () => request<Invite[]>('GET', '/v1/invites'),
-  createInvite: (opts: { max_uses?: number; expires_in_hours?: number }) =>
-    request<Invite>('POST', '/v1/invites', opts),
-  deleteInvite: (code: string) => request<void>('DELETE', `/v1/invites/${encodeURIComponent(code)}`),
+
+  friends: () => request<Relationship[]>('GET', '/v1/friends'),
+  /** Sends a request to a username, or accepts theirs if they already asked. */
+  addFriend: (username: string) => request<Relationship>('POST', '/v1/friends', { username }),
+  acceptFriend: (userId: string) => request<Relationship>('PUT', `/v1/friends/${userId}`),
+  /** Removes a friend, declines a request or cancels one we sent. */
+  removeFriend: (userId: string) => request<void>('DELETE', `/v1/friends/${userId}`),
 
   createChannel: (kind: Channel['kind'], name: string) => request<Channel>('POST', '/v1/channels', { kind, name }),
   updateChannel: (id: string, patch: { name?: string; position?: number }) =>

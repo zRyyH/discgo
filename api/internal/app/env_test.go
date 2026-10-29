@@ -148,13 +148,13 @@ func (c *client) call(method, path string, body, out any) int {
 }
 
 // devLogin logs in through POST /v1/auth/dev and the code exchange.
-func (e *env) devLogin(email, invite string) (*client, int, string) {
+func (e *env) devLogin(email string) (*client, int, string) {
 	e.t.Helper()
 	var res struct {
 		Code  string                `json:"code"`
 		Error struct{ Code string } `json:"error"`
 	}
-	status := e.call("", "POST", "/v1/auth/dev", map[string]string{"email": email, "name": strings.Split(email, "@")[0], "invite": invite}, &res)
+	status := e.call("", "POST", "/v1/auth/dev", map[string]string{"email": email, "name": strings.Split(email, "@")[0]}, &res)
 	if status != http.StatusOK {
 		return nil, status, res.Error.Code
 	}
@@ -173,22 +173,13 @@ func (e *env) exchange(code string) *client {
 	return &client{e: e, token: out.Token, user: out.User}
 }
 
-func (e *env) mustLogin(email, invite string) *client {
+func (e *env) mustLogin(email string) *client {
 	e.t.Helper()
-	c, status, code := e.devLogin(email, invite)
+	c, status, code := e.devLogin(email)
 	if c == nil {
 		e.t.Fatalf("login %s: %d %s", email, status, code)
 	}
 	return c
-}
-
-func (e *env) invite(admin *client) string {
-	e.t.Helper()
-	var inv protocol.Invite
-	if st := admin.call("POST", "/v1/invites", map[string]any{}, &inv); st != http.StatusCreated {
-		e.t.Fatalf("create invite: %d", st)
-	}
-	return inv.Code
 }
 
 // --- gateway helpers ---
@@ -328,7 +319,7 @@ func newFakeGoogle(t *testing.T) *fakeGoogle {
 		claims := map[string]any{
 			"iss": g.srv.URL, "aud": "client-id", "sub": g.Sub, "nonce": nonce,
 			"iat": time.Now().Unix(), "exp": time.Now().Add(time.Hour).Unix(),
-			"email": g.Email, "email_verified": true, "name": g.Name, "picture": "https://img.test/a.png",
+			"email": g.Email, "email_verified": true, "name": g.Name, "picture": "https://lh3.googleusercontent.com/a/photo=s96-c",
 		}
 		signer, _ := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: g.key},
 			(&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", "k1"))

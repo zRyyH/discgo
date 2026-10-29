@@ -1,7 +1,7 @@
 // Small shared building blocks styled with the design tokens (desktop/DESIGN.md).
 import * as Switch from '@radix-ui/react-switch';
 import * as Tooltip from '@radix-ui/react-tooltip';
-import { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { colorFor, initials } from '../lib/format';
 
@@ -99,10 +99,12 @@ export function Tip({ label, children, side = 'top' }: { label: string; children
   );
 }
 
+/** The Google account photo; initials on a colour from the id when there is none or it fails to load. */
 export function Avatar({ id, name, url, size = 32, ring }: { id: string; name: string; url?: string; size?: number; ring?: boolean }) {
+  const [failed, setFailed] = useState<string | null>(null);
   const style = { width: size, height: size, fontSize: Math.max(9, size * 0.38) };
   const ringCls = ring ? 'outline outline-2 outline-offset-1 outline-ok' : '';
-  if (url) {
+  if (url && failed !== url) {
     return (
       <img
         src={url}
@@ -112,7 +114,8 @@ export function Avatar({ id, name, url, size = 32, ring }: { id: string; name: s
         loading="lazy"
         referrerPolicy="no-referrer"
         draggable={false}
-        className={cx('shrink-0 rounded-full object-cover', ringCls)}
+        onError={() => setFailed(url)}
+        className={cx('shrink-0 rounded-full bg-bg-3 object-cover', ringCls)}
         style={style}
       />
     );

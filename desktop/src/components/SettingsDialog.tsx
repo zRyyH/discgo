@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Check, Copy, Hash, Trash2, Volume2, X } from 'lucide-react';
 import { api, ApiError } from '../api/rest';
-import type { Channel, Invite } from '../shared/protocol';
+import type { Channel } from '../shared/protocol';
 import { appVersion } from '../shared/shell';
 import { useCommunity } from '../stores/community';
 import { useSession } from '../stores/session';
@@ -16,7 +16,6 @@ const sections: { id: SettingsSection; label: string; admin?: boolean }[] = [
   { id: 'account', label: 'Minha conta' },
   { id: 'voice', label: 'Voz e vídeo' },
   { id: 'notifications', label: 'Sons' },
-  { id: 'invites', label: 'Convites', admin: true },
   { id: 'channels', label: 'Canais', admin: true },
   { id: 'members', label: 'Membros', admin: true },
 ];
@@ -56,7 +55,6 @@ export function SettingsDialog() {
             {section === 'account' && <Account />}
             {section === 'voice' && <VoiceSettings />}
             {section === 'notifications' && <Sounds />}
-            {section === 'invites' && isAdmin && <Invites />}
             {section === 'channels' && isAdmin && <Channels />}
             {section === 'members' && isAdmin && <Members />}
           </div>
@@ -83,15 +81,38 @@ function Account() {
         <Avatar id={me.id} name={me.display_name} url={me.avatar_url} size={64} />
         <div className="min-w-0 flex-1">
           <div className="text-title font-semibold">{me.display_name}</div>
-          <div className="text-body text-text-2">{me.email}</div>
-          <div className="text-meta text-text-3">{me.role === 'admin' ? 'Admin' : 'Membro'}</div>
+          <div className="flex items-center gap-1 text-body text-text-2">
+            <span className="font-mono text-text-1 select-text">{me.username}</span>
+            <CopyButton text={me.username} label="Copiar usuário" />
+          </div>
+          <div className="text-meta text-text-3">
+            {me.email} · {me.role === 'admin' ? 'Admin' : 'Membro'}
+          </div>
         </div>
         <Button variant="danger" onClick={() => void logout()}>
           Sair
         </Button>
       </div>
+      <p className="mt-4 text-meta text-text-3">Nome e foto vêm da sua conta Google e são atualizados a cada login.</p>
       <p className="mt-6 text-meta text-text-3">DiscGo {version}</p>
     </>
+  );
+}
+
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <IconButton
+      icon={copied ? Check : Copy}
+      label={copied ? 'Copiado!' : label}
+      size={14}
+      className="size-6"
+      onClick={() => {
+        void navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+    />
   );
 }
 
@@ -102,76 +123,6 @@ function Sounds() {
     <>
       <Heading>Sons</Heading>
       <Toggle label="Sons de entrar, sair e silenciar" checked={sounds} onChange={(v) => update({ sounds: v })} />
-    </>
-  );
-}
-
-function useAsync<T>(load: () => Promise<T>, deps: unknown[]) {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const reload = () =>
-    load()
-      .then((d) => {
-        setData(d);
-        setError(null);
-      })
-      .catch((e) => setError(e instanceof ApiError ? e.message : String(e)));
-  useEffect(() => void reload(), deps);
-  return { data, error, reload, setError };
-}
-
-function Invites() {
-  const { data: invites, error, reload, setError } = useAsync(api.invites, []);
-  const [maxUses, setMaxUses] = useState('');
-  const [hours, setHours] = useState('168');
-  const [copied, setCopied] = useState<string | null>(null);
-
-  const create = async () => {
-    try {
-      await api.createInvite({
-        max_uses: maxUses ? Number(maxUses) : undefined,
-        expires_in_hours: hours ? Number(hours) : undefined,
-      });
-      await reload();
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
-    }
-  };
-  const copy = (inv: Invite) => {
-    void navigator.clipboard.writeText(inv.code);
-    setCopied(inv.code);
-    setTimeout(() => setCopied(null), 1500);
-  };
-
-  return (
-    <>
-      <Heading>Convites</Heading>
-      <p className="mb-4 text-body text-text-2">Quem entra pela primeira vez informa o código na tela de login.</p>
-      <div className="mb-6 flex items-end gap-2">
-        <Field label="Usos (vazio = ilimitado)">
-          <Input value={maxUses} inputMode="numeric" onChange={(e) => setMaxUses(e.target.value.replace(/\D/g, ''))} />
-        </Field>
-        <Field label="Validade em horas (vazio = sem prazo)">
-          <Input value={hours} inputMode="numeric" onChange={(e) => setHours(e.target.value.replace(/\D/g, ''))} />
-        </Field>
-        <Button onClick={() => void create()}>Criar convite</Button>
-      </div>
-      {error && <p className="mb-3 text-meta text-danger">{error}</p>}
-      <div className="divide-y divide-border rounded-lg border border-border">
-        {invites?.length === 0 && <p className="p-4 text-body text-text-3">Nenhum convite.</p>}
-        {invites?.map((inv) => (
-          <div key={inv.code} className="flex items-center gap-3 px-4 py-2">
-            <code className="font-mono text-body">{inv.code}</code>
-            <span className="flex-1 text-meta text-text-3">
-              {inv.uses}
-              {inv.max_uses ? `/${inv.max_uses}` : ''} usos
-              {inv.expires_at ? ` · expira ${new Date(inv.expires_at).toLocaleString('pt-BR')}` : ' · sem prazo'}
-            </span>
-            <IconButton icon={copied === inv.code ? Check : Copy} label="Copiar código" onClick={() => copy(inv)} />
-            <IconButton icon={Trash2} label="Apagar convite" danger onClick={() => void api.deleteInvite(inv.code).then(reload)} />
-          </div>
-        ))}
-      </div>
     </>
   );
 }

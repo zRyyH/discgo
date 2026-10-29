@@ -6,9 +6,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
-
-	"github.com/jackc/pgx/v5/pgtype"
 
 	"discgo/api/internal/auth"
 	"discgo/api/internal/db"
@@ -16,13 +13,17 @@ import (
 )
 
 func (s *Server) googleStart(w http.ResponseWriter, r *http.Request) {
-	u, err := s.Auth.GoogleAuthURL(r.Context(), r.URL.Query().Get("invite"))
+	// This opens in the browser, so failures get the HTML page, not JSON.
+	u, err := s.Auth.GoogleAuthURL(r.Context())
 	if errors.Is(err, auth.ErrNotConfigured) {
-		writeError(w, http.StatusServiceUnavailable, "not_configured", err.Error())
+		renderLogin(w, http.StatusServiceUnavailable, loginPageData{
+			Message: "O login com o Google ainda não foi configurado neste servidor (GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET).",
+		})
 		return
 	}
 	if err != nil {
-		s.internal(w, r, err)
+		s.Log.Error("google start failed", "err", err)
+		renderLogin(w, http.StatusBadGateway, loginPageData{Message: "Não foi possível falar com o Google agora. Tente de novo em instantes."})
 		return
 	}
 	http.Redirect(w, r, u, http.StatusFound)
@@ -31,21 +32,30 @@ func (s *Server) googleStart(w http.ResponseWriter, r *http.Request) {
 func (s *Server) googleCallback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	if e := q.Get("error"); e != "" {
-		renderLogin(w, http.StatusBadRequest, "", "O Google não autorizou o login ("+e+").")
+		renderLogin(w, http.StatusBadRequest, loginPageData{Message: "O Google não autorizou o login (" + e + ")."})
 		return
 	}
-	code, err := s.Auth.GoogleCallback(r.Context(), q.Get("state"), q.Get("code"))
-	switch {
-	case errors.Is(err, auth.ErrInviteRequired):
-		renderLogin(w, http.StatusForbidden, "", "Esta conta ainda não faz parte da comunidade. Peça um convite, informe o código no DiscGo e entre de novo.")
-	case errors.Is(err, auth.ErrInviteInvalid):
-		renderLogin(w, http.StatusForbidden, "", "O convite é inválido, expirou ou já foi usado.")
-	case err != nil:
+	code, user, err := s.Auth.GoogleCallback(r.Context(), q.Get("state"), q.Get("code"))
+	if err != nil {
 		s.Log.Warn("google callback failed", "err", err)
-		renderLogin(w, http.StatusBadRequest, "", "Não foi possível concluir o login. Tente de novo pelo DiscGo.")
-	default:
-		renderLogin(w, http.StatusOK, s.AuthRedirect+"?code="+url.QueryEscape(code), "")
+		renderLogin(w, http.StatusBadRequest, loginPageData{Message: "Não foi possível concluir o login. Volte ao DiscGo e tente de novo."})
+		return
 	}
+	first, _, _ := strings.Cut(user.DisplayName, " ")
+	renderLogin(w, http.StatusOK, loginPageData{
+		Redirect: template.URL(s.AuthRedirect + "?code=" + url.QueryEscape(code)),
+		Name:     first,
+		Username: user.Username,
+		Avatar:   user.AvatarUrl,
+		Initial:  initial(user.DisplayName),
+	})
+}
+
+func initial(name string) string {
+	for _, r := range name {
+		return strings.ToUpper(string(r))
+	}
+	return "?"
 }
 
 // devLogin is the Google-free login for development (AUTH_DEV=true).
@@ -57,7 +67,7 @@ func (s *Server) devLogin(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Email  string `json:"email"`
 		Name   string `json:"name"`
-		Invite string `json:"invite"`
+		Avatar string `json:"avatar_url"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -67,27 +77,14 @@ func (s *Server) devLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad_request", "email is required")
 		return
 	}
-	code, err := s.Auth.Login(r.Context(), auth.Identity{Subject: "dev:" + body.Email, Email: body.Email, DisplayName: body.Name}, body.Invite)
-	if s.loginError(w, err) {
-		return
-	}
+	code, _, err := s.Auth.Login(r.Context(), auth.Identity{
+		Subject: "dev:" + body.Email, Email: body.Email, DisplayName: body.Name, AvatarURL: body.Avatar,
+	})
 	if err != nil {
 		s.internal(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"code": code})
-}
-
-func (s *Server) loginError(w http.ResponseWriter, err error) bool {
-	switch {
-	case errors.Is(err, auth.ErrInviteRequired):
-		writeError(w, http.StatusForbidden, "invite_required", "an invite is required for the first login")
-	case errors.Is(err, auth.ErrInviteInvalid):
-		writeError(w, http.StatusForbidden, "invite_invalid", "invite is invalid, expired or used up")
-	default:
-		return false
-	}
-	return true
 }
 
 func (s *Server) exchange(w http.ResponseWriter, r *http.Request) {
@@ -166,80 +163,64 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, protocol.FromUser(u))
 }
 
-func (s *Server) listInvites(w http.ResponseWriter, r *http.Request) {
-	invites, err := s.Queries.ListInvites(r.Context())
-	if err != nil {
-		s.internal(w, r, err)
-		return
-	}
-	out := make([]protocol.Invite, 0, len(invites))
-	for _, i := range invites {
-		out = append(out, protocol.FromInvite(i))
-	}
-	writeJSON(w, http.StatusOK, out)
+type loginPageData struct {
+	Redirect template.URL // discgo://auth?code=… on success
+	Name     string
+	Username string
+	Avatar   string
+	Initial  string // shown when there is no photo
+	Message  string // the error, when Redirect is empty
 }
 
-func (s *Server) createInvite(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		MaxUses        *int32 `json:"max_uses"`
-		ExpiresInHours *int   `json:"expires_in_hours"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
-	params := db.CreateInviteParams{Code: auth.NewInviteCode(), CreatedBy: currentUser(r).ID}
-	if body.MaxUses != nil {
-		if *body.MaxUses < 1 {
-			writeError(w, http.StatusBadRequest, "bad_request", "max_uses must be >= 1")
-			return
-		}
-		params.MaxUses = pgtype.Int4{Int32: *body.MaxUses, Valid: true}
-	}
-	if body.ExpiresInHours != nil {
-		if *body.ExpiresInHours < 1 {
-			writeError(w, http.StatusBadRequest, "bad_request", "expires_in_hours must be >= 1")
-			return
-		}
-		t := time.Now().Add(time.Duration(*body.ExpiresInHours) * time.Hour)
-		params.ExpiresAt = &t
-	}
-	inv, err := s.Queries.CreateInvite(r.Context(), params)
-	if err != nil {
-		s.internal(w, r, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, protocol.FromInvite(inv))
-}
-
-func (s *Server) deleteInvite(w http.ResponseWriter, r *http.Request) {
-	n, err := s.Queries.DeleteInvite(r.Context(), r.PathValue("code"))
-	if err != nil {
-		s.internal(w, r, err)
-		return
-	}
-	if n == 0 {
-		writeError(w, http.StatusNotFound, "not_found", "invite not found")
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
+// The page the browser shows at the end of the Google login. Same tokens as
+// desktop/src/styles.css.
 var loginPage = template.Must(template.New("login").Parse(`<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>DiscGo</title>
-{{if .Redirect}}<meta http-equiv="refresh" content="0;url={{.Redirect}}">{{end}}
+{{if .Redirect}}<meta http-equiv="refresh" content="1;url={{.Redirect}}">{{end}}
 <style>
-:root{color-scheme:dark}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0c10;color:#e7e9f0;font:15px/1.5 system-ui,sans-serif}
-main{max-width:420px;padding:32px;background:#171923;border:1px solid #262a3a;border-radius:14px}
-h1{font-size:18px;margin:0 0 8px}p{color:#9ba1b5;margin:0 0 16px}a{display:inline-block;padding:8px 14px;border-radius:10px;background:#8b9cff;color:#0b0c10;text-decoration:none;font-weight:600}
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:#0b0c10;color:#e7e9f0;
+  font:14px/1.5 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  background-image:radial-gradient(600px 400px at 20% 10%,rgba(139,156,255,.14),transparent 70%),radial-gradient(500px 360px at 85% 90%,rgba(61,220,151,.08),transparent 70%)}
+main{width:100%;max-width:400px;padding:36px 32px 32px;background:#111218;border:1px solid #262a3a;border-radius:18px;text-align:center;
+  box-shadow:0 24px 64px rgba(0,0,0,.5);animation:in .25s ease-out}
+@keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){main{animation:none}}
+.brand{display:inline-flex;align-items:center;gap:8px;margin-bottom:28px;color:#9ba1b5;font-size:13px;font-weight:600;letter-spacing:.02em}
+.mark{width:22px;height:22px;border-radius:50%;border:4px solid #8b9cff}
+.photo{position:relative;width:88px;height:88px;margin:0 auto 18px}
+.photo img,.photo .ph{width:88px;height:88px;border-radius:50%;object-fit:cover;outline:2px solid #262a3a;outline-offset:3px}
+.photo .ph{display:grid;place-items:center;background:#1e2130;font-size:32px;font-weight:600}
+.badge{position:absolute;right:-2px;bottom:-2px;width:28px;height:28px;border-radius:50%;background:#3ddc97;border:4px solid #111218;display:grid;place-items:center}
+.err{width:64px;height:64px;margin:0 auto 18px;border-radius:50%;display:grid;place-items:center;background:rgba(255,92,108,.12);color:#ff5c6c;font-size:28px;font-weight:700}
+h1{font-size:22px;line-height:1.3;margin:0 0 8px;font-weight:650}
+p{color:#9ba1b5;margin:0 0 22px}p:last-child{margin:0}
+b{color:#e7e9f0;font-weight:600}
+.user{display:inline-block;padding:2px 8px;border-radius:6px;background:#1e2130;color:#e7e9f0;font:600 13px/1.6 ui-monospace,"JetBrains Mono",monospace}
+a.btn{display:block;padding:11px 16px;border-radius:10px;background:#8b9cff;color:#0b0c10;text-decoration:none;font-weight:600}
+a.btn:hover{background:#a1afff}
+small{display:block;margin-top:16px;color:#646b80;font-size:12px}
 </style></head><body><main>
-{{if .Redirect}}<h1>Login concluído</h1><p>Voltando para o DiscGo. Se nada acontecer, use o botão abaixo e depois feche esta aba.</p><a href="{{.Redirect}}">Abrir o DiscGo</a>
-{{else}}<h1>Não foi possível entrar</h1><p>{{.Message}}</p>{{end}}
+<div class="brand"><span class="mark"></span>DiscGo</div>
+{{if .Redirect}}
+<div class="photo">{{if .Avatar}}<img src="{{.Avatar}}" alt="" referrerpolicy="no-referrer">{{else}}<div class="ph">{{.Initial}}</div>{{end}}
+<span class="badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0b0c10" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span></div>
+<h1>Tudo certo{{if .Name}}, {{.Name}}{{end}}!</h1>
+<p>Você entrou como <span class="user">{{.Username}}</span><br>O DiscGo vai abrir sozinho. Depois, pode fechar esta aba.</p>
+<a class="btn" href="{{.Redirect}}">Abrir o DiscGo</a>
+<small>Se o navegador perguntar, permita abrir o DiscGo.</small>
+{{else}}
+<div class="err">!</div>
+<h1>Não foi possível entrar</h1>
+<p>{{.Message}}</p>
+{{end}}
 </main></body></html>`))
 
-func renderLogin(w http.ResponseWriter, status int, redirect, message string) {
+func renderLogin(w http.ResponseWriter, status int, d loginPageData) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
-	_ = loginPage.Execute(w, map[string]any{"Redirect": template.URL(redirect), "Message": message})
+	_ = loginPage.Execute(w, d)
 }

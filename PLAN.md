@@ -26,7 +26,8 @@ Aplicativo desktop (Windows 10 20H1+ x64) estilo Discord para uma comunidade (um
 - Canais de texto: mensagens com anexos (imagens e arquivos), editar e apagar as próprias mensagens, histórico paginado.
 - Canais de voz: entrar/sair, mutar microfone, ensurdecer (deafen), escolha de dispositivos, indicador de quem está falando, volume por usuário.
 - Dentro do canal de voz: compartilhar tela (monitor ou janela, com áudio do sistema opcional) e webcam. Vários usuários podem compartilhar ao mesmo tempo.
-- Login com Google. Entrada na comunidade por convite. Papéis: `admin` e `member`. Admin cria/edita/apaga canais e convites.
+- Login com Google: qualquer conta entra, e a conta é criada no primeiro login com o nome e a foto do Google. Papéis: `admin` e `member`. Admin cria/edita/apaga canais.
+- Amigos: pedido de amizade pelo nome de usuário, que é o Gmail sem o `@gmail.com` (`joao.silva@gmail.com` → `joao.silva`); o outro lado aceita ou recusa.
 - Presença online/offline e lista de quem está em cada canal de voz, visível para todos.
 
 ### 1.2 Fora do escopo (v1)
@@ -197,7 +198,7 @@ discgo/
       stores/ auth  channels  messages  presence  voice  settings
       media/  MediaSession.ts  P2pSession.ts  SfuSession.ts  ScreenShare.ts  devices.ts  stats.ts
       components/ Titlebar Sidebar ChannelList MemberList Chat MessageList Composer
-                  VoiceBar MediaStage StreamTile SourcePicker Settings Login Invite DebugOverlay
+                  VoiceBar MediaStage StreamTile SourcePicker Settings Login Friends DebugOverlay
       App.tsx  main.tsx
   deploy/
     docker-compose.dev.yml  docker-compose.prod.yml
@@ -209,7 +210,7 @@ discgo/
 Tudo da v1 permanece (bibliotecas, modelo de dados, REST de auth/convites/canais/mensagens/uploads, gateway, uploads, Dockerfile). O que muda:
 
 ### 5.1 Modelo de dados
-Sem alteração. Tabelas `users`, `sessions`, `invites`, `channels`, `messages` como na v1 (UUIDv7, `attachments jsonb`, índice `(channel_id, id desc)`).
+Sem alteração. Tabelas `users`, `sessions`, `channels`, `messages` como na v1, mais `friend_requests` e `friends` (`invites` saiu, seção 13) (UUIDv7, `attachments jsonb`, índice `(channel_id, id desc)`).
 
 ### 5.2 REST adicionado
 | Método | Rota | Descrição |
@@ -412,8 +413,8 @@ Cada fase termina com: código compilando e lint limpo, testes da fase passando,
 - Aceite: 1080p60 com CPU do engine ≤ 5 % e 1440p60 ≤ 6 % na máquina de referência; latência P2P ≤ 80 ms em LAN; modo A ou B decidido e registrado; WebView2 aprovado ou decisão de voltar ao Electron registrada.
 
 ### Fase 2 — Auth e usuários
-- Igual à v1 (Google, sessões, convites, primeiro admin), com deep link via `tauri-plugin-deep-link` e token no `keyring`.
-- Aceite: login completo com duas contas; convite obrigatório para a segunda; sessão sobrevive a reinício.
+- Igual à v1 (Google, sessões, primeiro admin), com deep link via `tauri-plugin-deep-link` e token no `keyring`. Os convites saíram em 2026-10-29 (seção 13).
+- Aceite: login completo com duas contas; sessão sobrevive a reinício.
 
 ### Fase 3 — Canais, mensagens e gateway
 - CRUD de canais, mensagens, uploads; gateway com todos os ops das seções 5.3 e da v1; `internal/voice` com a regra de modo e o relay de `rtc_signal`; testes com `httptest`, cliente WS de teste e fixtures de contrato.
@@ -491,3 +492,9 @@ Segunda camada baixa para tela em SFU (segundo encoder), AV1 por padrão quando 
   - Instalador NSIS por usuário; DLLs do GStreamer na raiz da instalação (ao lado do engine) e plugins em `resources/gst/plugins`; atualizações assinadas com minisign (`tauri-plugin-updater`), `latest.json` no bucket de releases. A chave do updater foi gerada no dev-1 (`%USERPROFILE%\.tauri\discgo-updater.key`).
   - No teste de atualização local o Microsoft Defender colocou em quarentena o `discgo.exe` novo (`Trojan:Win32/Bearfoos.A!ml`, heurística de ML; a varredura manual do mesmo arquivo não acusa nada). A assinatura de código deixa de ser só "opcional" na prática: sem ela há risco de falso positivo além do aviso do SmartScreen.
   - Pendências que dependem de contas e máquinas do usuário: deploy real (VM, DNS, S3, IAM, OAuth do Google), chamadas entre redes domésticas, TURN forçado, máquina limpa, e a assinatura de código.
+- 2026-10-29 (cadastro aberto e amigos, pedido do usuário):
+  - Sem convites: qualquer conta Google entra e a conta é criada no primeiro login (o primeiro usuário continua virando admin). A tabela `invites`, as rotas `/v1/invites` e a tela de convites foram removidas (migration `0002`).
+  - Nome de usuário = Gmail sem `@gmail.com` (`googlemail.com` igual), em minúsculas. Para outros domínios (Google Workspace) o usuário é o endereço inteiro, porque só o Gmail garante que a parte antes do @ é única. A busca ignora maiúsculas e pontos, como o Gmail (`JoaoSilva` acha `joao.silva`). O nome é fixado na criação; se um endereço já usado voltar com outra conta Google (Workspace), ganha um número no fim.
+  - Amigos: `POST /v1/friends {username}` manda o pedido (ou aceita na hora se o outro já tinha pedido), `PUT /v1/friends/{id}` aceita, `DELETE /v1/friends/{id}` remove amigo, recusa ou cancela. Os dois lados recebem `relationship_add`/`relationship_remove` pelo gateway, e o `ready` traz `relationships`. Por enquanto a amizade só aparece na tela de amigos (sem DMs, que seguem fora do escopo).
+  - Foto: a do Google (`picture`), pedida em 256 px em vez de 96 px e atualizada a cada login. Sem foto ou com erro ao carregar, ficam as iniciais.
+  - Com cadastro aberto, qualquer pessoa com conta Google vê os canais e a lista de membros; não há expulsar/banir (Backlog).

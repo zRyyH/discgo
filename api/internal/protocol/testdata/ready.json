@@ -3,10 +3,11 @@
   "d": {
     "user": {
       "id": "0192f5d2-7c1e-7a10-9f00-0000000000a1",
+      "username": "ana.silva",
       "display_name": "Ana",
       "avatar_url": "",
       "role": "admin",
-      "email": "ana@example.com"
+      "email": "ana.silva@gmail.com"
     },
     "community": {
       "name": "DiscGo"
@@ -14,6 +15,7 @@
     "members": [
       {
         "id": "0192f5d2-7c1e-7a10-9f00-0000000000a1",
+        "username": "ana.silva",
         "display_name": "Ana",
         "avatar_url": "",
         "role": "admin",
@@ -21,6 +23,7 @@
       },
       {
         "id": "0192f5d2-7c1e-7a10-9f00-0000000000b2",
+        "username": "bruno",
         "display_name": "Bruno",
         "avatar_url": "",
         "role": "member",
@@ -47,6 +50,19 @@
       "channel_id": "0192f5d2-7c1e-7a10-9f00-00000000c001",
       "session_id": "0192f5d2-7c1e-7a10-9f00-00000000s001",
       "mode": "idle"
-    }
+    },
+    "relationships": [
+      {
+        "user": {
+          "id": "0192f5d2-7c1e-7a10-9f00-0000000000b2",
+          "username": "bruno",
+          "display_name": "Bruno",
+          "avatar_url": "",
+          "role": "member"
+        },
+        "type": "incoming",
+        "since": "2026-10-29T18:05:00Z"
+      }
+    ]
   }
 }
