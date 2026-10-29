@@ -7,7 +7,6 @@ SHELL := bash
 GST_ROOT ?= $(GSTREAMER_1_0_ROOT_MSVC_X86_64)
 export PKG_CONFIG := $(GST_ROOT)/bin/pkg-config.exe
 export PKG_CONFIG_PATH := $(GST_ROOT)/lib/pkgconfig
-DATABASE_URL ?= postgres://discgo:discgo@localhost:5432/discgo?sslmode=disable
 COMPOSE_DEV := docker compose -f deploy/docker-compose.dev.yml
 ENGINE_SIDECAR := desktop/src-tauri/binaries/discgo-engine-x86_64-pc-windows-msvc.exe
 
@@ -20,7 +19,8 @@ infra-down:
 	$(COMPOSE_DEV) down
 
 api:
-	cd api && DATABASE_URL='$(DATABASE_URL)' go run ./cmd/api
+	@test -f deploy/.env.dev || cp deploy/.env.example deploy/.env.dev
+	set -a && . deploy/.env.dev && set +a && cd api && go run ./cmd/api
 
 engine:
 	cargo build -p discgo-engine
@@ -46,5 +46,5 @@ lint:
 	cd desktop && pnpm lint
 
 test:
-	cd api && go test ./...
+	cd api && go test -race ./...
 	cargo test --workspace

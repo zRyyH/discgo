@@ -41,5 +41,16 @@ services:
       - "17881:17881"
       - "17882:17882/udp"
 
+  # S3-compatible storage for attachments in dev (SeaweedFS; MinIO no longer
+  # publishes images). No credentials: any access key is accepted.
+  s3:
+    image: chrislusf/seaweedfs:4.50
+    command: ["server", "-s3", "-s3.port=9000", "-dir=/data", "-volume.max=5"]
+    ports:
+      - "9000:9000"
+    volumes:
+      - s3data:/data
+
 volumes:
   pgdata:
+  s3data:

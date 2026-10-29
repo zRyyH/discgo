@@ -10,9 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"discgo/api/internal/app"
 	"discgo/api/internal/config"
-	"discgo/api/internal/db"
-	"discgo/api/internal/httpapi"
 )
 
 func main() {
@@ -33,22 +32,21 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := db.Open(ctx, cfg.DatabaseURL)
+	if cfg.AuthDev {
+		log.Warn("AUTH_DEV is on: POST /v1/auth/dev logs in without Google")
+	}
+	a, err := app.New(ctx, cfg, log, app.Overrides{})
 	if err != nil {
 		return err
 	}
-	defer pool.Close()
-	if err := db.Migrate(ctx, pool, log); err != nil {
-		return err
-	}
+	defer a.Pool.Close()
+	go a.CleanupSessions(ctx, log)
 
-	api := &httpapi.Server{Log: log, Pool: pool}
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           api.Handler(),
+		Handler:           a.Handler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-
 	errc := make(chan error, 1)
 	go func() {
 		log.Info("listening", "addr", cfg.HTTPAddr)

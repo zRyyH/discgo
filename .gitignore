@@ -28,3 +28,4 @@ deploy/livekit/livekit.yaml
 .idea/
 Thumbs.db
 .DS_Store
+deploy/.env.dev

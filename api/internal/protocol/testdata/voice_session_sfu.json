@@ -1,0 +1,9 @@
+{
+  "op": "voice_session",
+  "d": {
+    "channel_id": "0192f5d2-7c1e-7a10-9f00-00000000c001",
+    "session_id": "0192f5d2-7c1e-7a10-9f00-00000000s003",
+    "mode": "sfu",
+    "livekit_url": "wss://lk.example.com"
+  }
+}

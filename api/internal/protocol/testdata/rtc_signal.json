@@ -1,0 +1,12 @@
+{
+  "op": "rtc_signal",
+  "d": {
+    "session_id": "0192f5d2-7c1e-7a10-9f00-00000000s002",
+    "from_user_id": "0192f5d2-7c1e-7a10-9f00-0000000000a1",
+    "stream": "screen",
+    "type": "offer",
+    "payload": {
+      "sdp": "v=0\r\n"
+    }
+  }
+}

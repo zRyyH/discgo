@@ -1,0 +1,52 @@
+{
+  "op": "ready",
+  "d": {
+    "user": {
+      "id": "0192f5d2-7c1e-7a10-9f00-0000000000a1",
+      "display_name": "Ana",
+      "avatar_url": "",
+      "role": "admin",
+      "email": "ana@example.com"
+    },
+    "community": {
+      "name": "DiscGo"
+    },
+    "members": [
+      {
+        "id": "0192f5d2-7c1e-7a10-9f00-0000000000a1",
+        "display_name": "Ana",
+        "avatar_url": "",
+        "role": "admin",
+        "status": "online"
+      },
+      {
+        "id": "0192f5d2-7c1e-7a10-9f00-0000000000b2",
+        "display_name": "Bruno",
+        "avatar_url": "",
+        "role": "member",
+        "status": "offline"
+      }
+    ],
+    "channels": [
+      {
+        "id": "0192f5d2-7c1e-7a10-9f00-00000000c001",
+        "kind": "voice",
+        "name": "Sala",
+        "position": 0
+      }
+    ],
+    "voice_states": [
+      {
+        "user_id": "0192f5d2-7c1e-7a10-9f00-0000000000a1",
+        "channel_id": "0192f5d2-7c1e-7a10-9f00-00000000c001",
+        "self_mute": true,
+        "self_deaf": false
+      }
+    ],
+    "voice_session": {
+      "channel_id": "0192f5d2-7c1e-7a10-9f00-00000000c001",
+      "session_id": "0192f5d2-7c1e-7a10-9f00-00000000s001",
+      "mode": "idle"
+    }
+  }
+}

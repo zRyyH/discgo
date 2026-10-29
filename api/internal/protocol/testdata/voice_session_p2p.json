@@ -1,0 +1,10 @@
+{
+  "op": "voice_session",
+  "d": {
+    "channel_id": "0192f5d2-7c1e-7a10-9f00-00000000c001",
+    "session_id": "0192f5d2-7c1e-7a10-9f00-00000000s002",
+    "mode": "p2p",
+    "peer_user_id": "0192f5d2-7c1e-7a10-9f00-0000000000b2",
+    "polite": true
+  }
+}

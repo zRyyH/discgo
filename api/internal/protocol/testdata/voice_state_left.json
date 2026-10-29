@@ -1,0 +1,9 @@
+{
+  "op": "voice_state_update",
+  "d": {
+    "user_id": "0192f5d2-7c1e-7a10-9f00-0000000000b2",
+    "channel_id": null,
+    "self_mute": false,
+    "self_deaf": false
+  }
+}

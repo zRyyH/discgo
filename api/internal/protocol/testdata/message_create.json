@@ -1,0 +1,22 @@
+{
+  "op": "message_create",
+  "d": {
+    "id": "0192f5d2-7c1e-7a10-9f00-00000000m001",
+    "channel_id": "0192f5d2-7c1e-7a10-9f00-00000000c001",
+    "author_id": "0192f5d2-7c1e-7a10-9f00-0000000000a1",
+    "content": "oi",
+    "attachments": [
+      {
+        "key": "att/u/1/foto.png",
+        "name": "foto.png",
+        "content_type": "image/png",
+        "size": 1234,
+        "width": 640,
+        "height": 480,
+        "url": "https://s3/..."
+      }
+    ],
+    "created_at": "2026-10-29T18:00:00Z",
+    "edited_at": "2026-10-29T18:05:00Z"
+  }
+}
