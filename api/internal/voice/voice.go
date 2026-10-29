@@ -64,6 +64,7 @@ type participant struct {
 	mute      bool
 	deaf      bool
 	grace     *time.Timer
+	sfuGone   *time.Timer // LiveKit reported the user left the room
 }
 
 type room struct {
@@ -245,6 +246,37 @@ func (m *Manager) States() []protocol.VoiceState {
 	return out
 }
 
+// SFULeft handles a LiveKit participant_left webhook (PLAN 5.3): a user still
+// in an sfu channel after Grace without rejoining the room is removed.
+func (m *Manager) SFULeft(userID, channelID uuid.UUID) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	p, ok := m.users[userID]
+	if !ok || p.channelID != channelID || m.rooms[channelID].mode != SFU {
+		return
+	}
+	stopTimer(&p.sfuGone)
+	p.sfuGone = time.AfterFunc(m.cfg.Grace, func() {
+		m.mu.Lock()
+		o := &outbox{}
+		if m.users[userID] == p && p.sfuGone != nil && m.rooms[p.channelID].mode == SFU {
+			p.sfuGone = nil
+			m.leaveLocked(p, o)
+		}
+		m.mu.Unlock()
+		m.flush(o)
+	})
+}
+
+// SFUJoined handles participant_joined: the user is (back) in the LiveKit room.
+func (m *Manager) SFUJoined(userID, channelID uuid.UUID) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if p, ok := m.users[userID]; ok && p.channelID == channelID {
+		stopTimer(&p.sfuGone)
+	}
+}
+
 // ChannelRemoved disconnects everyone from a deleted channel.
 func (m *Manager) ChannelRemoved(channelID uuid.UUID) {
 	m.mu.Lock()
@@ -260,6 +292,7 @@ func (m *Manager) ChannelRemoved(channelID uuid.UUID) {
 
 func (m *Manager) leaveLocked(p *participant, o *outbox) {
 	stopTimer(&p.grace)
+	stopTimer(&p.sfuGone)
 	delete(m.users, p.userID)
 	r := m.rooms[p.channelID]
 	delete(r.members, p.userID)
@@ -321,6 +354,7 @@ func (m *Manager) switchMode(channelID uuid.UUID, r *room, mode string, o *outbo
 	r.mode = mode
 	r.sessionID = newID()
 	for _, p := range r.members {
+		stopTimer(&p.sfuGone) // leaving the LiveKit room is expected now
 		o.sessions = append(o.sessions, sessionMsg{p.userID, p.connID, m.session(channelID, r, p)})
 	}
 }

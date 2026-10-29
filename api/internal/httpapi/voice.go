@@ -2,6 +2,10 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
+
+	"github.com/google/uuid"
+	"github.com/livekit/protocol/webhook"
 
 	"discgo/api/internal/voice"
 )
@@ -43,4 +47,33 @@ func (s *Server) voiceToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"token": token})
+}
+
+// livekitWebhook receives LiveKit room events (PLAN 5.3), signed with the API key.
+// They only confirm voice state: the gateway stays the source of truth.
+func (s *Server) livekitWebhook(w http.ResponseWriter, r *http.Request) {
+	if s.LiveKitKeys == nil {
+		writeError(w, http.StatusNotFound, "not_found", "not found")
+		return
+	}
+	ev, err := webhook.ReceiveWebhookEvent(r, s.LiveKitKeys)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "bad_signature", err.Error())
+		return
+	}
+	if ev.Participant == nil || ev.Room == nil || strings.HasSuffix(ev.Participant.Identity, "#screen") {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	userID, err1 := uuid.Parse(ev.Participant.Identity)
+	channelID, err2 := uuid.Parse(ev.Room.Name)
+	if err1 == nil && err2 == nil {
+		switch ev.Event {
+		case webhook.EventParticipantJoined:
+			s.Voice.SFUJoined(userID, channelID)
+		case webhook.EventParticipantLeft:
+			s.Voice.SFULeft(userID, channelID)
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

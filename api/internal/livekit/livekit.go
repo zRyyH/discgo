@@ -42,3 +42,11 @@ func (i *Issuer) Token(room, userID, name, kind string) (string, error) {
 		SetValidFor(tokenTTL).
 		ToJWT()
 }
+
+// KeyProvider verifies webhook signatures; nil when LiveKit is not configured.
+func KeyProvider(key, secret string) lkauth.KeyProvider {
+	if key == "" || secret == "" {
+		return nil
+	}
+	return lkauth.NewSimpleKeyProvider(key, secret)
+}

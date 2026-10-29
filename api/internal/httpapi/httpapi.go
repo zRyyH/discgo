@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	lkauth "github.com/livekit/protocol/auth"
 
 	"discgo/api/internal/auth"
 	"discgo/api/internal/db"
@@ -33,16 +34,18 @@ type Storage interface {
 }
 
 type Server struct {
-	Log      *slog.Logger
-	Pool     *pgxpool.Pool
-	Queries  *db.Queries
-	Auth     *auth.Service
-	Hub      *gateway.Hub
-	Voice    *voice.Manager
-	Storage  Storage
-	LiveKit  *livekit.Issuer
-	STUNURLs []string
-	AuthDev  bool
+	Log     *slog.Logger
+	Pool    *pgxpool.Pool
+	Queries *db.Queries
+	Auth    *auth.Service
+	Hub     *gateway.Hub
+	Voice   *voice.Manager
+	Storage Storage
+	LiveKit *livekit.Issuer
+	// Verifies LiveKit webhooks; nil disables the endpoint.
+	LiveKitKeys lkauth.KeyProvider
+	STUNURLs    []string
+	AuthDev     bool
 	// Where the browser goes after a Google login (discgo://auth); ?code= is appended.
 	AuthRedirect   string
 	MaxUploadBytes int64
@@ -79,6 +82,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.Handle("GET /v1/rtc/ice-servers", s.authed(s.iceServers))
 	mux.Handle("GET /v1/channels/{id}/voice-token", s.authed(s.voiceToken))
+	mux.HandleFunc("POST /v1/livekit/webhook", s.livekitWebhook)
 	mux.Handle("GET /v1/gateway", s.Hub)
 
 	return s.recover(s.logRequests(cors(mux)))

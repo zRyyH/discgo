@@ -1,6 +1,10 @@
 package app_test
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
@@ -8,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	lkauth "github.com/livekit/protocol/auth"
 
 	"discgo/api/internal/protocol"
 )
@@ -317,4 +323,47 @@ func statusOf(ms []protocol.Member, id string) string {
 		}
 	}
 	return ""
+}
+
+// LiveKit participant_left without a voice_leave removes the user after the grace period.
+func TestLiveKitWebhook(t *testing.T) {
+	e := newEnv(t)
+	ana := e.mustLogin("ana@test", "")
+	bruno := e.mustLogin("bruno@test", e.invite(ana))
+	carla := e.mustLogin("carla@test", e.invite(ana))
+	var vc protocol.Channel
+	ana.call("POST", "/v1/channels", map[string]string{"kind": "voice", "name": "Sala"}, &vc)
+	wa, wb, wc := ana.connect(true), bruno.connect(true), carla.connect(true)
+	for _, w := range []*ws{wa, wb, wc} {
+		w.send(protocol.OpVoiceJoin, map[string]any{"channel_id": vc.ID})
+	}
+	var s protocol.VoiceSession
+	wa.expectWhere(protocol.OpVoiceSession, &s, func() bool { return s.Mode == "sfu" })
+
+	post := func(secret, event string) int {
+		body, _ := json.Marshal(map[string]any{
+			"event":       event,
+			"room":        map[string]string{"name": vc.ID},
+			"participant": map[string]string{"identity": carla.user.ID},
+		})
+		sum := sha256.Sum256(body)
+		tok, _ := lkauth.NewAccessToken("devkey", secret).SetSha256(base64.StdEncoding.EncodeToString(sum[:])).SetValidFor(time.Minute).ToJWT()
+		req, _ := http.NewRequest("POST", e.srv.URL+"/v1/livekit/webhook", bytes.NewReader(body))
+		req.Header.Set("Authorization", tok)
+		req.Header.Set("Content-Type", "application/webhook+json")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+	if st := post("wrong-secret-0123456789abcdef0123456789", "participant_left"); st != http.StatusUnauthorized {
+		t.Fatalf("unsigned webhook accepted: %d", st)
+	}
+	if st := post("devsecret-0123456789abcdef0123456789", "participant_left"); st != http.StatusNoContent {
+		t.Fatalf("webhook: %d", st)
+	}
+	var vs protocol.VoiceState
+	wa.expectWhere(protocol.OpVoiceStateUpdate, &vs, func() bool { return vs.UserID == carla.user.ID && vs.ChannelID == nil })
 }

@@ -1,0 +1,97 @@
+# Production (PLAN 9): one VM, everything in containers. nginx and LiveKit use the
+# host network (TLS on 443, WebRTC on 7881/tcp + 7882/udp, TURN on 3478/udp +
+# 5349/tcp); the API and PostgreSQL only listen on localhost.
+#
+#   cp deploy/.env.example deploy/.env  (and fill it)
+#   cp deploy/livekit/livekit.yaml.example deploy/livekit/livekit.yaml  (and fill it)
+#   deploy/scripts/deploy.sh
+name: discgo
+
+services:
+  nginx:
+    image: nginx:1.29-alpine
+    network_mode: host
+    restart: unless-stopped
+    # Reload every 6 h so renewed certificates are picked up.
+    command: ["/bin/sh", "-c", "(while :; do sleep 6h; nginx -s reload; done) & exec nginx -g \"daemon off;\""]
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in deploy/.env}
+    volumes:
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - certbot-www:/var/www/certbot:ro
+      - letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - api
+
+  # Renews certificates through nginx's /.well-known/acme-challenge (webroot);
+  # deploy.sh issues the first one in standalone mode before nginx starts.
+  certbot:
+    image: certbot/certbot:v4.2.0
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c", "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"]
+    volumes:
+      - certbot-www:/var/www/certbot
+      - letsencrypt:/etc/letsencrypt
+
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    network_mode: host
+    restart: unless-stopped
+    command: ["--config", "/etc/livekit.yaml"]
+    volumes:
+      - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
+      # TURN/TLS uses the same Let's Encrypt certificate (it covers turn.DOMAIN).
+      - letsencrypt:/etc/letsencrypt:ro
+
+  api:
+    build: ../api
+    image: discgo-api:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HTTP_ADDR: ":8080"
+      DATABASE_URL: postgres://discgo:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/discgo?sslmode=disable
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: discgo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: discgo
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U discgo -d discgo"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # Nightly pg_dump to S3 (bucket lifecycle rule keeps 30 days).
+  backup:
+    build: ./backup
+    image: discgo-backup:latest
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGUSER: discgo
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: discgo
+      BACKUP_S3_URI: ${BACKUP_S3_URI:?set BACKUP_S3_URI, e.g. s3://discgo-backups/db}
+      BACKUP_AT: ${BACKUP_AT:-03:30}
+      AWS_REGION: ${S3_REGION:-sa-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  letsencrypt:
+  certbot-www:

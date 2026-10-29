@@ -93,6 +93,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, o Overrides) 
 		Voice:          voiceMgr,
 		Storage:        store,
 		LiveKit:        livekit.NewIssuer(cfg.LiveKitAPIKey, cfg.LiveKitAPISecret),
+		LiveKitKeys:    livekit.KeyProvider(cfg.LiveKitAPIKey, cfg.LiveKitAPISecret),
 		STUNURLs:       cfg.STUNURLs,
 		AuthDev:        cfg.AuthDev,
 		AuthRedirect:   cfg.AuthRedirect,

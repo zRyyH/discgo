@@ -253,3 +253,26 @@ func TestGraceAndRejoin(t *testing.T) {
 		t.Fatalf("remaining user: %+v", s)
 	}
 }
+
+func TestSFUWebhookRemovesStaleParticipant(t *testing.T) {
+	rec := newRecorder()
+	m := newManager(rec)
+	ch := uuid.Must(uuid.NewV7())
+	u := ids(3)
+	for i, id := range u {
+		m.Join(id, uint64(i+1), ch, true, false, false)
+	}
+	// u[2] drops out of LiveKit and comes back: stays.
+	m.SFULeft(u[2], ch)
+	m.SFUJoined(u[2], ch)
+	time.Sleep(100 * time.Millisecond)
+	if _, _, ok := m.Current(u[2]); !ok {
+		t.Fatal("removed although it rejoined the room")
+	}
+	// u[2] drops out for good: removed after the grace period.
+	m.SFULeft(u[2], ch)
+	eventually(t, "removal", func() bool {
+		_, _, ok := m.Current(u[2])
+		return !ok
+	})
+}
