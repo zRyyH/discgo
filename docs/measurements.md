@@ -107,3 +107,20 @@ engine with `rswebrtc` linked statically (the DLL alone was 16.2 MB): 46.9 MB in
 P2P session with `PATH=C:\Windows\System32` only. A truly clean machine (no VC++
 redistributable, no GStreamer ever installed) was **not** tested: Windows Sandbox is
 not enabled on dev-1.
+
+## Phases 2-4 — 2026-10-29 (dev-1)
+
+| What | Result | How |
+|---|---|---|
+| `POST /messages` → `message_create` on two gateway clients | 3.8 ms (budget 100 ms) | `go test ./internal/app -run TestMessagesAndEvents -v` |
+| Third participant joins → `voice_session` sfu on all three clients | 0.5 ms server side | `TestVoiceModes` |
+| Back to p2p after the third leaves | after `P2P_SWITCH_DELAY` (300 ms in the test, 10 s by default), never before | `TestVoiceModes` |
+| Idle app, release build, 60 s after start | 86.0 MB private working set over 7 processes (shell 3.6 MB + WebView2), 0.05 % CPU of 12 threads (≈ 0.6 % of one core) | `docs/measure-idle.ps1 -SettleSec 60 -SampleSec 60` |
+| Idle app, first 50 s after start | 113.5 MB, 0.72 % CPU (startup work still settling) | same, `-SettleSec 20 -SampleSec 30` |
+| Steady idle CPU by process | GPU process 0.55 %, renderer 0.16 %, everything else 0 % (of one core) | per-process sample |
+| Scroll 2,000 messages top↔bottom, 80 px per frame (dev build, React dev mode) | run 1: 3,920 frames, p95 16.8 ms, 2 missed frames (one 250 ms hitch, a single long animation frame of 281 ms); run 2: 3,931 frames, max 16.9 ms, 0 missed, 0 long animation frames | `?spike=scroll&channel=<id>` (`desktop/src/spike/scrollCheck.ts`) |
+| Load 2,000 messages page by page (40 × 50) | 4.2-4.5 s | same probe |
+| Session survives restart | yes (token from the Credential Manager, no login screen) | restart of the dev app |
+
+Not covered: Google login with real accounts (needs OAuth client credentials), and the
+side-by-side visual review with Discord.

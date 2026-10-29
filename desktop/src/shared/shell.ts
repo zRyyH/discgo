@@ -1,13 +1,59 @@
 // Thin wrapper over the desktop shell (PLAN 7.2). Everything the UI needs from
-// Tauri goes through here so the shell stays swappable.
+// Tauri goes through here so the shell stays swappable. Outside Tauri (the UI
+// opened in a plain browser during development, e.g. as extra call participants)
+// it falls back to browser equivalents.
+import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link';
+import { load, type Store } from '@tauri-apps/plugin-store';
 
-const win = getCurrentWindow();
+export const inTauri = '__TAURI_INTERNALS__' in window;
+
+const win = inTauri ? getCurrentWindow() : null;
+const noop = async () => {};
 
 export const windowControls = {
-  minimize: () => win.minimize(),
-  toggleMaximize: () => win.toggleMaximize(),
-  close: () => win.close(),
-  isMaximized: () => win.isMaximized(),
-  onResized: (cb: () => void) => win.onResized(cb),
+  minimize: () => win?.minimize() ?? noop(),
+  toggleMaximize: () => win?.toggleMaximize() ?? noop(),
+  close: () => win?.close() ?? noop(),
+  isMaximized: () => win?.isMaximized() ?? Promise.resolve(false),
+  onResized: (cb: () => void) => win?.onResized(cb) ?? Promise.resolve(() => {}),
+};
+
+// Browser fallback is per tab, so several dev users can run side by side.
+const SESSION_KEY = 'discgo.session';
+export const session = {
+  get: () => (inTauri ? invoke<string | null>('session_get') : Promise.resolve(sessionStorage.getItem(SESSION_KEY))),
+  set: (token: string) =>
+    inTauri ? invoke<void>('session_set', { token }) : Promise.resolve(sessionStorage.setItem(SESSION_KEY, token)),
+  clear: () => (inTauri ? invoke<void>('session_clear') : Promise.resolve(sessionStorage.removeItem(SESSION_KEY))),
+};
+
+export const openExternal = (url: string) =>
+  inTauri ? invoke<void>('open_external', { url }) : Promise.resolve(void window.open(url, '_blank', 'noopener'));
+export const appVersion = () => (inTauri ? invoke<string>('app_version') : Promise.resolve('dev-browser'));
+
+/** Calls cb for every discgo:// URL: the one that launched the app and later ones. */
+export async function onDeepLink(cb: (url: URL) => void): Promise<() => void> {
+  if (!inTauri) return () => {};
+  const handle = (urls: string[] | null) => urls?.forEach((u) => cb(new URL(u)));
+  const unlisten = await onOpenUrl(handle);
+  handle(await getCurrent());
+  return unlisten;
+}
+
+let settingsStore: Promise<Store> | null = null;
+export const settings = {
+  store: () => (settingsStore ??= load('settings.json', { defaults: {}, autoSave: 300 })),
+  async get<T>(key: string): Promise<T | undefined> {
+    if (!inTauri) {
+      const v = sessionStorage.getItem('discgo.' + key);
+      return v ? (JSON.parse(v) as T) : undefined;
+    }
+    return (await settings.store()).get<T>(key);
+  },
+  async set(key: string, value: unknown) {
+    if (!inTauri) return sessionStorage.setItem('discgo.' + key, JSON.stringify(value));
+    await (await settings.store()).set(key, value);
+  },
 };
