@@ -71,7 +71,7 @@ sync (or move the repository): syncing them is slow and can corrupt builds.
 
 ## Engine measurements (phase 1 spike)
 
-Quick look: `powershell -ExecutionPolicy Bypass -File enginespikedemo.ps1` shares the primary
+Quick look: `powershell -ExecutionPolicy Bypass -File engine\spike\demo.ps1` shares the primary
 monitor P2P to a viewer window (`-Sfu` goes through the dev LiveKit). Ctrl+C stops it.
 
 [engine/spike/](engine/spike/) holds the measurement harness: `serve.mjs` (viewer page,
