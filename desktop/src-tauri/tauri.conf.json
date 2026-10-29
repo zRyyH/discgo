@@ -43,7 +43,22 @@
     ],
     "externalBin": [
       "binaries/discgo-engine"
-    ]
+    ],
+    "createUpdaterArtifacts": true,
+    "resources": {
+      "resources/gst/bin/*": "./",
+      "resources/gst/plugins/*": "resources/gst/plugins/"
+    },
+    "publisher": "DiscGo",
+    "shortDescription": "DiscGo",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    }
   },
   "plugins": {
     "deep-link": {
@@ -51,6 +66,15 @@
         "schemes": [
           "discgo"
         ]
+      }
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDREQzE0NUUwRDQ4RUNBQzQKUldURXlvN1U0RVhCVGNxeWZuRnA0em4zYU9lTHhQL242enJ4L0VLV1JtRko1T2JET1pYTk15MTYK",
+      "endpoints": [
+        "https://discgo-releases.s3.sa-east-1.amazonaws.com/releases/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
       }
     }
   }

@@ -75,32 +75,52 @@ struct Adapt {
     fps: i32,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum CaptureApi {
     Wgc,
     Dxgi,
 }
 
 impl Session {
+    /// Fallbacks (PLAN 6.9): WGC → DXGI desktop duplication for monitors, and the
+    /// next encoder when one cannot open (e.g. NVENC sessions used up by other apps).
     pub fn start(params: &StartParams, encoders: &[EncoderInfo]) -> Result<Session> {
-        if std::env::var("DISCGO_ENGINE_CAPTURE_API").as_deref() == Ok("dxgi") {
-            return Self::build(params, encoders, CaptureApi::Dxgi);
-        }
-        match Self::build(params, encoders, CaptureApi::Wgc) {
-            Ok(s) => Ok(s),
-            Err(e) if matches!(params.source, SourceRef::Monitor { .. }) => {
-                log::warn!("WGC capture failed ({e:#}), retrying with DXGI desktop duplication");
-                Self::build(params, encoders, CaptureApi::Dxgi)
+        let (_, monitor) = source_geometry(&params.source)?;
+        let capture_adapter = sources::adapter_for_monitor(monitor);
+        let apis: &[CaptureApi] =
+            if std::env::var("DISCGO_ENGINE_CAPTURE_API").as_deref() == Ok("dxgi") {
+                &[CaptureApi::Dxgi]
+            } else if matches!(params.source, SourceRef::Monitor { .. }) {
+                &[CaptureApi::Wgc, CaptureApi::Dxgi]
+            } else {
+                &[CaptureApi::Wgc]
+            };
+        let mut last = anyhow!("no usable encoder; run probe first");
+        for (info, same_adapter) in encoder::candidates(encoders, params.codec, capture_adapter)
+            .into_iter()
+            .take(3)
+        {
+            for &api in apis {
+                match Self::build(params, &info, same_adapter, api) {
+                    Ok(s) => return Ok(s),
+                    Err(e) => {
+                        log::warn!("start with {} ({api:?}) failed: {e:#}", info.name);
+                        last = e;
+                    }
+                }
             }
-            Err(e) => Err(e),
         }
+        Err(last)
     }
 
-    fn build(params: &StartParams, encoders: &[EncoderInfo], api: CaptureApi) -> Result<Session> {
-        let (source_size, monitor) = source_geometry(&params.source)?;
-        let capture_adapter = sources::adapter_for_monitor(monitor);
-        let (info, same_adapter) = encoder::select(encoders, params.codec, capture_adapter)
-            .ok_or_else(|| anyhow!("no usable encoder; run probe first"))?;
+    fn build(
+        params: &StartParams,
+        info: &EncoderInfo,
+        same_adapter: bool,
+        api: CaptureApi,
+    ) -> Result<Session> {
+        let info = info.clone();
+        let (source_size, _) = source_geometry(&params.source)?;
         let (_, _, fps, kbps) = params.preset.params();
         let (width, height) = fit(source_size, params.preset);
         let adapter = info.adapter.as_ref().map_or(0, |a| a.index);

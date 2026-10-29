@@ -90,3 +90,30 @@ read by the engine: `DISCGO_ENGINE_LOG=debug|trace`, `DISCGO_ENGINE_CAPTURE_API=
 `DISCGO_ENGINE_KEEP_LATENCY=1`. The WebView2 checks run with
 `pnpm tauri dev --config '{"build":{"devUrl":"http://localhost:1420/?spike=webview"}}'`
 and report to the same harness.
+
+## Releases (phase 8)
+
+A tag `vX.Y.Z` (equal to `desktop/src-tauri/tauri.conf.json` `version`) runs
+[.github/workflows/release.yml](.github/workflows/release.yml) on a Windows runner: it
+installs GStreamer, builds the engine and its runtime, builds the NSIS installer
+(per-user install, WebView2 bootstrapper), signs the update with minisign and uploads
+`DiscGo_X.Y.Z_x64-setup.exe` + `latest.json` to `s3://$RELEASES_BUCKET/releases/`.
+Installed apps check `latest.json` at start and every 6 h and offer "Atualizar e
+reiniciar" in the titlebar.
+
+Repository secrets: `TAURI_SIGNING_PRIVATE_KEY` (contents of the private key),
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (empty for the current key), `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY`. Variables: `VITE_API_URL` (`https://api.DOMAIN`),
+`RELEASES_BUCKET`, `AWS_REGION`. The updater endpoint is in `tauri.conf.json`
+(`plugins.updater.endpoints`); change it if the bucket name differs.
+
+The update key pair lives in `%USERPROFILE%\.tauri\discgo-updater.key(.pub)`; the public
+key is in `tauri.conf.json`. Losing the private key means installed apps can no longer
+be updated: back it up. A local release build: `make gst-runtime`, then
+`TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/discgo-updater.key)" pnpm tauri build` in `desktop/`.
+
+Code signing (Authenticode) is not set up: without it Windows SmartScreen warns on the
+first installs, and Microsoft Defender's heuristics may quarantine an updated
+`discgo.exe` (seen once in testing, see [docs/measurements.md](docs/measurements.md)).
+With a certificate, set `bundle.windows.certificateThumbprint` (or `signCommand`) in
+`tauri.conf.json` and import the certificate on the runner.

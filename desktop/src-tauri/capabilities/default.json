@@ -17,6 +17,8 @@
     "window-state:default",
     "core:window:allow-unminimize",
     "core:window:allow-set-focus",
-    "core:window:allow-unmaximize"
+    "core:window:allow-unmaximize",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

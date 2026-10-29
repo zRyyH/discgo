@@ -1,0 +1,99 @@
+# Release (PLAN 8): on a tag vX.Y.Z build the engine, its GStreamer runtime and the
+# signed NSIS installer on Windows, then publish installer + latest.json to S3.
+#
+# Repository secrets: TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD,
+# AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY. Variables: VITE_API_URL
+# (https://api.DOMAIN), RELEASES_BUCKET (discgo-releases), AWS_REGION (sa-east-1).
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+env:
+  GST_VERSION: 1.28.8
+  GST_SHA256: e4c41ee6ee9c6c32a45d198463ec08d79bac3bd5fa58adc93d13fe4a08abc9d9
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version matches the tag
+        shell: pwsh
+        run: |
+          $v = (Get-Content desktop/src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          if ("v$v" -ne "${{ github.ref_name }}") { throw "tag ${{ github.ref_name }} != tauri.conf.json version $v" }
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: desktop/pnpm-lock.yaml
+
+      - name: Install GStreamer (MSVC, runtime + development)
+        shell: pwsh
+        run: |
+          $exe = "$env:RUNNER_TEMP\gstreamer.exe"
+          Invoke-WebRequest "https://gstreamer.freedesktop.org/data/pkg/windows/$env:GST_VERSION/msvc/gstreamer-1.0-msvc-x86_64-$env:GST_VERSION.exe" -OutFile $exe
+          if ((Get-FileHash $exe -Algorithm SHA256).Hash -ne $env:GST_SHA256) { throw 'GStreamer installer hash mismatch' }
+          $dir = "$env:RUNNER_TEMP\gstreamer"
+          Start-Process $exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', '/TYPE=full', "/DIR=$dir" -Wait
+          "GSTREAMER_1_0_ROOT_MSVC_X86_64=$dir\" >> $env:GITHUB_ENV
+          "PKG_CONFIG=$dir\bin\pkg-config.exe" >> $env:GITHUB_ENV
+          "PKG_CONFIG_PATH=$dir\lib\pkgconfig" >> $env:GITHUB_ENV
+          "$dir\bin" >> $env:GITHUB_PATH
+
+      - name: Engine and GStreamer runtime
+        shell: pwsh
+        run: |
+          cargo build --release -p discgo-engine
+          Copy-Item target/release/discgo-engine.exe desktop/src-tauri/binaries/discgo-engine-x86_64-pc-windows-msvc.exe
+          ./engine/gst-runtime/collect.ps1
+          git diff --exit-code engine/gst-runtime/dlls.lock.txt
+
+      - name: Build and sign the installer
+        working-directory: desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm tauri build
+
+      - name: Size budget (90 MB)
+        shell: pwsh
+        run: |
+          $f = Get-Item target/release/bundle/nsis/*.exe
+          "installer: {0:N1} MB" -f ($f.Length / 1MB)
+          if ($f.Length -gt 90MB) { throw 'installer over 90 MB' }
+
+      - name: Publish to S3
+        shell: pwsh
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          $base = "https://${{ vars.RELEASES_BUCKET }}.s3.${{ vars.AWS_REGION }}.amazonaws.com/releases"
+          node desktop/scripts/latest-json.mjs $base "${{ github.ref_name }}" | Out-File -Encoding utf8NoBOM latest.json
+          $installer = Get-Item target/release/bundle/nsis/*-setup.exe
+          aws s3 cp $installer.FullName "s3://${{ vars.RELEASES_BUCKET }}/releases/$($installer.Name)"
+          # latest.json last: clients only see the new version once the installer is there.
+          aws s3 cp latest.json "s3://${{ vars.RELEASES_BUCKET }}/releases/latest.json" --cache-control "no-cache"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: discgo-${{ github.ref_name }}
+          path: |
+            target/release/bundle/nsis/*-setup.exe
+            target/release/bundle/nsis/*.sig
+            latest.json

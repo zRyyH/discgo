@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useState } from 'react';
-import { Copy, Minus, Square, X } from 'lucide-react';
+import { Copy, Download, Minus, Square, X } from 'lucide-react';
+import { useUpdate } from '../app/updates';
 import { windowControls } from '../shared/shell';
 
 const ICON = { size: 14, strokeWidth: 1.75 };
@@ -23,6 +24,7 @@ export function Titlebar({ title }: { title: string }) {
         {title}
       </span>
       <div data-tauri-drag-region className="flex-1" />
+      <UpdateButton />
       <div className="flex h-full">
         <TitlebarButton label="Minimizar" onClick={windowControls.minimize}>
           <Minus {...ICON} />
@@ -55,6 +57,23 @@ function TitlebarButton(props: {
       }`}
     >
       {props.children}
+    </button>
+  );
+}
+
+function UpdateButton() {
+  const { available, installing, error, install } = useUpdate();
+  if (!available) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => void install()}
+      disabled={installing}
+      title={error ?? `Versão ${available.version}`}
+      className="mr-2 flex h-6 items-center gap-1.5 rounded-sm bg-ok/15 px-2 text-meta font-semibold text-ok hover:bg-ok/25 disabled:opacity-60"
+    >
+      <Download size={13} strokeWidth={2} />
+      {installing ? 'Atualizando…' : 'Atualizar e reiniciar'}
     </button>
   );
 }

@@ -165,3 +165,26 @@ The Tauri app (dev1) shares the 4K primary monitor through the engine sidecar at
 Fixed on the way: the server no longer blocks a pair for P2P when `p2p_failed` comes
 from a peer whose gateway connection already dropped (app closed or crashed); the
 SFU session no longer subscribes to its own `#screen` participant.
+
+## Phase 8 — 2026-10-29 (dev-1, installer and updates)
+
+Local release builds (`make gst-runtime`, `pnpm tauri build` with the updater key);
+the CI workflow was checked with actionlint, not run (no GitHub remote yet).
+
+| What | Result |
+|---|---|
+| NSIS installer, per-user, WebView2 bootstrapper | 15.4 MiB (16,108,075 bytes; budget 90 MB) |
+| Installed layout | 55.3 MB: `discgo.exe`, `discgo-engine.exe`, 41 GStreamer/CRT DLLs at the install root, 25 plugins in `resources/gst/plugins` |
+| Installed engine with `PATH=C:\Windows\System32` | `probe` lists the encoders; `start` 1080p60 → `nvd3d11h264enc`, `zero_copy=true` |
+| NVENC sessions across start/stop | one engine: 10 start/stop cycles + 1 start, all `nvd3d11h264enc`; a second engine started meanwhile also got NVENC (no leaked sessions) |
+| Update check (installed 0.1.0, local `latest.json` for 0.1.1) | "Atualizar e reiniciar" shows in the titlebar right after start |
+| Update install | download + minisign check passed and the 0.1.1 installer ran in passive mode; Microsoft Defender then quarantined the new `discgo.exe` as `Trojan:Win32/Bearfoos.A!ml` and removed its shortcuts and uninstall key |
+| Same files, on-demand Defender scan | `discgo.exe` 0.1.1 and its installer: no threats found |
+
+The Defender hit is a machine-learning heuristic on an unsigned binary installed into
+`%TEMP%` by an installer that the app downloaded over plain HTTP from localhost (the
+test setup); a static scan of the same files is clean. It is still a real risk for
+unsigned releases: Authenticode signing is the mitigation, and a false positive can
+be reported at https://www.microsoft.com/wdsi/filesubmission. Still to do on real
+infrastructure: a clean Windows VM (install, login, voice, screen share) and an update
+from the S3 bucket over HTTPS.

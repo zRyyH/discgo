@@ -252,31 +252,34 @@ fn write_cache(cache: &Cache) -> Result<()> {
     Ok(())
 }
 
-/// Picks the encoder for a capture whose textures live on `capture_adapter`
-/// (PLAN 6.2). Returns the encoder and whether it shares the capture adapter.
-pub fn select(
+/// Encoders to try, best first, for a capture whose textures live on
+/// `capture_adapter` (PLAN 6.2, 6.9): hardware on the capture adapter, hardware
+/// elsewhere, then software; the requested codec before H.264. The flag says
+/// whether the encoder shares the capture adapter.
+pub fn candidates(
     encoders: &[EncoderInfo],
     codec: Codec,
     capture_adapter: Option<u32>,
-) -> Option<(EncoderInfo, bool)> {
+) -> Vec<(EncoderInfo, bool)> {
     let same = |e: &EncoderInfo| e.adapter.as_ref().map(|a| a.index) == capture_adapter;
-    let hw = |c: Codec| {
-        encoders
-            .iter()
-            .filter(move |e| e.hardware && e.d3d11 && e.codec == c)
+    let mut out: Vec<(EncoderInfo, bool)> = Vec::new();
+    let mut push = |e: &EncoderInfo, same: bool| {
+        if !out.iter().any(|(o, _)| o.name == e.name) {
+            out.push((e.clone(), same));
+        }
     };
     for c in [codec, Codec::H264] {
-        if let Some(e) = hw(c).find(|e| same(e)) {
-            return Some((e.clone(), true));
-        }
-        if let Some(e) = hw(c).next() {
-            return Some((e.clone(), false));
-        }
+        let hw = encoders
+            .iter()
+            .filter(|e| e.hardware && e.d3d11 && e.codec == c);
+        hw.clone().filter(|e| same(e)).for_each(|e| push(e, true));
+        hw.filter(|e| !same(e)).for_each(|e| push(e, false));
     }
     encoders
         .iter()
-        .find(|e| e.vendor == Vendor::Software)
-        .map(|e| (e.clone(), false))
+        .filter(|e| e.vendor == Vendor::Software)
+        .for_each(|e| push(e, false));
+    out
 }
 
 /// Low-latency settings (PLAN 6.3). Property names differ between versions, so

@@ -42,6 +42,8 @@ pub fn run() {
         .manage(engine::EngineState::default())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .on_permission_request(webview::on_permission_request)
         .setup(|app| {
             // Installed builds get the scheme from the installer; dev builds register it here.
