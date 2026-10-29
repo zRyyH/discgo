@@ -26,7 +26,20 @@ const PW_RENDERFULLCONTENT: u32 = 2;
 pub fn monitor(x: i32, y: i32, w: i32, h: i32) -> Option<String> {
     grab(w, h, |dest, tw, th| unsafe {
         let screen = GetDC(None);
-        let ok = StretchBlt(dest, 0, 0, tw, th, Some(screen), x, y, w, h, SRCCOPY | CAPTUREBLT).as_bool();
+        let ok = StretchBlt(
+            dest,
+            0,
+            0,
+            tw,
+            th,
+            Some(screen),
+            x,
+            y,
+            w,
+            h,
+            SRCCOPY | CAPTUREBLT,
+        )
+        .as_bool();
         ReleaseDC(None, screen);
         ok
     })
@@ -37,7 +50,13 @@ pub fn monitor(x: i32, y: i32, w: i32, h: i32) -> Option<String> {
 pub fn window(hwnd: HWND) -> Option<String> {
     let mut r = RECT::default();
     unsafe {
-        DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &mut r as *mut _ as *mut _, size_of::<RECT>() as u32).ok()?;
+        DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &mut r as *mut _ as *mut _,
+            size_of::<RECT>() as u32,
+        )
+        .ok()?;
     }
     let (w, h) = (r.right - r.left, r.bottom - r.top);
     grab(w, h, |dest, tw, th| unsafe {
@@ -94,7 +113,10 @@ fn grab(w: i32, h: i32, draw: impl FnOnce(HDC, i32, i32) -> bool) -> Result<Stri
         pixels
     };
     let png = encode_png(pixels, tw, th)?;
-    Ok(format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png)))
+    Ok(format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(png)
+    ))
 }
 
 fn encode_png(bgrx: Vec<u8>, w: i32, h: i32) -> Result<Vec<u8>> {
@@ -104,14 +126,27 @@ fn encode_png(bgrx: Vec<u8>, w: i32, h: i32) -> Result<Vec<u8>> {
     ))?
     .downcast::<gst::Bin>()
     .unwrap();
-    let src = pipeline.by_name("src").unwrap().downcast::<gst_app::AppSrc>().unwrap();
-    let sink = pipeline.by_name("sink").unwrap().downcast::<gst_app::AppSink>().unwrap();
+    let src = pipeline
+        .by_name("src")
+        .unwrap()
+        .downcast::<gst_app::AppSrc>()
+        .unwrap();
+    let sink = pipeline
+        .by_name("sink")
+        .unwrap()
+        .downcast::<gst_app::AppSink>()
+        .unwrap();
     pipeline.set_state(gst::State::Playing)?;
     src.push_buffer(gst::Buffer::from_mut_slice(bgrx))?;
     src.end_of_stream()?;
-    let sample = sink.try_pull_sample(gst::ClockTime::from_mseconds(Duration::from_secs(2).as_millis() as u64));
+    let sample = sink.try_pull_sample(gst::ClockTime::from_mseconds(
+        Duration::from_secs(2).as_millis() as u64,
+    ));
     let _ = pipeline.set_state(gst::State::Null);
-    let buffer = sample.context("png encoder timed out")?.buffer_owned().context("no buffer")?;
+    let buffer = sample
+        .context("png encoder timed out")?
+        .buffer_owned()
+        .context("no buffer")?;
     let map = buffer.map_readable()?;
     Ok(map.as_slice().to_vec())
 }

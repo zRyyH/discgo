@@ -168,6 +168,28 @@ func TestP2PFailedBlocksPair(t *testing.T) {
 	}
 }
 
+func TestP2PFailedIgnoredWhenPeerIsGone(t *testing.T) {
+	rec := newRecorder()
+	m := newManager(rec)
+	ch := uuid.Must(uuid.NewV7())
+	u := ids(2)
+	m.Join(u[0], 1, ch, true, false, false)
+	m.Join(u[1], 2, ch, true, false, false)
+	p2p := rec.last(t, u[0])
+
+	// u[1]'s app died: its gateway connection closed, then u[0]'s ICE gives up.
+	m.ConnClosed(u[1], 2)
+	m.P2PFailed(u[0], p2p.SessionID)
+	if s := rec.last(t, u[0]); s.SessionID != p2p.SessionID {
+		t.Fatalf("switched to %s because the peer left", s.Mode)
+	}
+	// It comes back within the grace period: still p2p, nothing blocked.
+	m.Join(u[1], 3, ch, true, false, false)
+	if s := rec.last(t, u[1]); s.Mode != P2P {
+		t.Fatalf("rejoin got %+v", s)
+	}
+}
+
 func TestNotP2PCapableUsesSFU(t *testing.T) {
 	rec := newRecorder()
 	m := newManager(rec)

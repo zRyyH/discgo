@@ -4,6 +4,7 @@ import * as Slider from '@radix-ui/react-slider';
 import { Maximize2, MicOff, Monitor } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useCall } from '../media/call';
+import { useScreen } from '../media/ScreenShare';
 import type { RemoteMedia } from '../media/MediaSession';
 import { useCommunity } from '../stores/community';
 import { useSettings } from '../stores/settings';
@@ -12,7 +13,7 @@ import { useVoice } from '../stores/voice';
 import { Avatar, cx } from './ui';
 
 // One tile per participant (camera or avatar) plus one per screen share.
-type Tile = { key: string; userId: string; kind: 'user' | 'screen'; media?: RemoteMedia; local?: MediaStreamTrack | null };
+type Tile = { key: string; userId: string; kind: 'user' | 'screen' | 'own-screen'; media?: RemoteMedia; local?: MediaStreamTrack | null };
 
 /** The call view (PLAN 8): 16:9 tiles, click to focus with a 96 px filmstrip, F for fullscreen. */
 export function MediaStage() {
@@ -28,18 +29,21 @@ export function MediaStage() {
   );
   const remote = useCall((s) => s.remote);
   const localCam = useCall((s) => s.localCam);
+  const sharing = useScreen((s) => s.status === 'sharing' || s.status === 'restarting');
   const [focus, setFocus] = useState<string | null>(null);
   const stage = useRef<HTMLDivElement>(null);
 
   const tiles = useMemo<Tile[]>(() => {
     const out: Tile[] = [];
+    // No local preview of our own share: it would cost a decode for nothing (PLAN 1.3).
+    if (sharing && me) out.push({ key: 'own-screen', userId: me, kind: 'own-screen' });
     for (const r of remote) if (r.kind === 'screen' && r.live) out.push({ key: r.id, userId: r.userId, kind: 'screen', media: r });
     for (const id of ids) {
       const cam = remote.find((r) => r.userId === id && r.kind === 'cam' && r.live);
       out.push({ key: 'u:' + id, userId: id, kind: 'user', media: cam, local: id === me ? localCam : undefined });
     }
     return out;
-  }, [remote, ids, me, localCam]);
+  }, [remote, ids, me, localCam, sharing]);
 
   const focused = tiles.find((t) => t.key === focus);
 
@@ -108,13 +112,15 @@ const TileView = memo(function TileView({ tile, big, onClick }: { tile: Tile; bi
       )}
       style={big ? { height: '100%' } : undefined}
     >
-      {video ? (
+      {tile.kind === 'own-screen' ? (
+        <OwnShare />
+      ) : video ? (
         <Video media={tile.media} local={tile.local ?? undefined} mirror={!!tile.local} />
       ) : (
         <Avatar id={tile.userId} name={name} url={member?.avatar_url} size={big ? 112 : 64} />
       )}
       <span className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-sm bg-bg-0/80 px-2 py-0.5 text-meta text-text-1">
-        {tile.kind === 'screen' && <Monitor size={12} strokeWidth={1.75} />}
+        {tile.kind !== 'user' && <Monitor size={12} strokeWidth={1.75} />}
         {name}
         {tile.kind === 'user' && state?.self_mute && <MicOff size={12} strokeWidth={1.75} className="text-danger" />}
       </span>
@@ -123,6 +129,19 @@ const TileView = memo(function TileView({ tile, big, onClick }: { tile: Tile; bi
   if (tile.kind !== 'user' || tile.local !== undefined) return content;
   return <VolumeMenu userId={tile.userId}>{content}</VolumeMenu>;
 });
+
+function OwnShare() {
+  const { params, started, stats } = useScreen();
+  return (
+    <div className="flex flex-col items-center gap-2 text-center">
+      <Monitor size={36} strokeWidth={1.5} className="text-accent" />
+      <div className="text-body text-text-1">Você está compartilhando {params?.label}</div>
+      <div className="text-meta text-text-3">
+        {started ? `${started.width}×${started.height} · ${Math.round(stats?.fps_encoded ?? started.fps)} fps · ${started.encoder}` : 'Iniciando…'}
+      </div>
+    </div>
+  );
+}
 
 function Video({ media, local, mirror }: { media?: RemoteMedia; local?: MediaStreamTrack; mirror?: boolean }) {
   const ref = useRef<HTMLVideoElement>(null);

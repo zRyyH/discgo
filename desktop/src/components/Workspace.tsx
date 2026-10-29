@@ -11,6 +11,7 @@ import { useVoice } from '../stores/voice';
 import { MemberList } from './MemberList';
 import { MessageList } from './MessageList';
 import { SettingsDialog } from './SettingsDialog';
+import { SourcePicker } from './SourcePicker';
 import { Sidebar } from './Sidebar';
 import { EmptyState, ICON, IconButton } from './ui';
 
@@ -37,6 +38,7 @@ export function Workspace() {
       </div>
       <SettingsDialog />
       <DebugOverlay />
+      <SourcePicker />
     </div>
   );
 }

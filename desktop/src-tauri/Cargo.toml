@@ -23,3 +23,5 @@ tauri-plugin-store = "2.5.0"
 tauri-plugin-window-state = "2.5.0"
 tauri-plugin-single-instance = { version = "2.5.5", features = ["deep-link"] }
 keyring = "4.2.0"
+tauri-plugin-shell = "2.6.0"
+windows = { version = "0.62", features = ["Win32_System_Power"] }

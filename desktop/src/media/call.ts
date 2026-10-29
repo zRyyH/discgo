@@ -13,6 +13,8 @@ import { audioOut } from './audioOut';
 import { openCamera, openMic } from './devices';
 import type { MediaSession, RemoteMedia, SessionState, SessionStats } from './MediaSession';
 import { P2pSession } from './P2pSession';
+import { ScreenReceiver } from './ScreenReceiver';
+import { play } from '../lib/sounds';
 import { SfuSession } from './SfuSession';
 
 interface CallState {
@@ -40,6 +42,32 @@ let iceServers: RTCIceServer[] | null = null;
 // rtc_signal can arrive before our P2pSession exists (the peer got voice_session first).
 let earlySignals: RtcSignal[] = [];
 let statsTimer: ReturnType<typeof setInterval> | undefined;
+// P2P screen shares we are watching, by sharer.
+const receivers = new Map<string, ScreenReceiver>();
+const readyHooks = new Set<() => void>();
+let viewerSignals: ((sig: RtcSignal) => void) | null = null;
+
+/** ScreenShare.ts receives the viewer side of our own P2P share through this. */
+export function setViewerSignalHandler(cb: (sig: RtcSignal) => void) {
+  viewerSignals = cb;
+}
+
+/** Called every time a new session finished connecting (screen share re-targets on it). */
+export function onSessionReady(cb: () => void): () => void {
+  readyHooks.add(cb);
+  return () => readyHooks.delete(cb);
+}
+
+function addRemote(m: RemoteMedia) {
+  if (m.kind === 'mic' || m.kind === 'screen_audio') audioOut.add(m.id, m.userId, m.track);
+  if (m.kind === 'screen') play('stream');
+  useCall.setState((st) => ({ remote: [...st.remote.filter((r) => r.id !== m.id), m] }));
+}
+
+function removeRemote(id: string) {
+  audioOut.remove(id);
+  useCall.setState((st) => ({ remote: st.remote.filter((r) => r.id !== id) }));
+}
 
 export const useCall = create<CallState>()((set, get) => ({
   state: 'idle',
@@ -100,6 +128,8 @@ async function teardown() {
   const s = current;
   current = null;
   clearInterval(statsTimer);
+  receivers.forEach((r) => r.close());
+  receivers.clear();
   audioOut.clear();
   useSpeaking.getState().set([]);
   useCall.setState({ remote: [], stats: null, connectedAt: null });
@@ -139,6 +169,7 @@ async function switchTo(session: VoiceSession | null) {
       const channelId = session.channel_id;
       const { token } = await api.voiceToken(channelId);
       s = new SfuSession({
+        selfId: useCommunity.getState().me!.id,
         url: session.livekit_url!,
         token,
         voiceKbps,
@@ -161,6 +192,7 @@ async function switchTo(session: VoiceSession | null) {
     return;
   }
   if (s instanceof P2pSession) for (const sig of earlySignals.splice(0)) void s.receive(sig);
+  readyHooks.forEach((cb) => cb());
   statsTimer = setInterval(async () => {
     if (current === s) useCall.setState({ stats: await s.stats().catch(() => null) });
   }, 1000);
@@ -168,16 +200,9 @@ async function switchTo(session: VoiceSession | null) {
 
 function wire(s: P2pSession | SfuSession) {
   const mine = () => current === s;
-  s.on('track', (m) => {
-    if (!mine()) return;
-    if (m.kind === 'mic' || m.kind === 'screen_audio') audioOut.add(m.id, m.userId, m.track);
-    useCall.setState((st) => ({ remote: [...st.remote.filter((r) => r.id !== m.id), m] }));
-  });
+  s.on('track', (m) => mine() && addRemote(m));
   s.on('trackUpdate', (m) => mine() && useCall.setState((st) => ({ remote: st.remote.map((r) => (r.id === m.id ? { ...m } : r)) })));
-  s.on('trackEnded', (id) => {
-    audioOut.remove(id);
-    if (mine()) useCall.setState((st) => ({ remote: st.remote.filter((r) => r.id !== id) }));
-  });
+  s.on('trackEnded', (id) => (mine() ? removeRemote(id) : audioOut.remove(id)));
   s.on('speaking', (ids) => mine() && useSpeaking.getState().set(ids));
   s.on('state', (state) => {
     if (!mine()) return;
@@ -185,9 +210,14 @@ function wire(s: P2pSession | SfuSession) {
   });
 }
 
-/** rtc_signal from the gateway. */
+/** rtc_signal for the call itself ("av") or for a peer's screen we watch (role "sender"). */
 export function onRtcSignal(sig: RtcSignal) {
-  if (sig.stream !== 'av') return; // screen signalling: phase 6 (ScreenShare.ts)
+  if (sig.stream === 'screen') {
+    // Our own share's viewer answering, or a peer's share offering to us.
+    if ((sig.payload as { role?: string })?.role === 'viewer') viewerSignals?.(sig);
+    else onSenderSignal(sig);
+    return;
+  }
   if (current instanceof P2pSession && useCall.getState().sessionId === sig.session_id) void current.receive(sig);
   else if (sig.session_id === useVoice.getState().session?.session_id) earlySignals.push(sig);
 }
@@ -221,4 +251,17 @@ export function startCallController() {
   const s = useSettings.getState();
   audioOut.setVolumes(s.userVolumes);
   audioOut.setSink(s.outputDeviceId);
+}
+
+function onSenderSignal(sig: RtcSignal) {
+  const from = sig.from_user_id;
+  if (!from || !(current instanceof P2pSession) || useCall.getState().sessionId !== sig.session_id) return;
+  if (sig.type === 'offer') {
+    receivers.get(from)?.close();
+    const r = new ScreenReceiver(sig.session_id, from, iceServers ?? [], addRemote, removeRemote, (d) =>
+      gateway.send({ op: 'rtc_signal', d }),
+    );
+    receivers.set(from, r);
+  }
+  void receivers.get(from)?.handle(sig);
 }

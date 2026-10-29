@@ -1,6 +1,7 @@
 // Wires the gateway, deep links and stores together. Runs once at startup.
 import { gateway } from '../api/gateway';
 import { onRtcSignal, startCallController } from '../media/call';
+import { startScreenController } from '../media/ScreenShare';
 import { play } from '../lib/sounds';
 import type { ServerEvent } from '../shared/protocol';
 import { onDeepLink } from '../shared/shell';
@@ -17,6 +18,7 @@ export async function boot() {
   booted = true;
 
   startCallController();
+  startScreenController();
   gateway.onStatus((s) => useCommunity.getState().setStatus(s));
   gateway.on((ev) => {
     voiceSounds(ev);

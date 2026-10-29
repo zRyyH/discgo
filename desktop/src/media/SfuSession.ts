@@ -17,6 +17,7 @@ import type { EngineTarget } from '../shared/engine';
 import { Emitter, type MediaSession, type RemoteKind, type RemoteMedia, type SessionStats } from './MediaSession';
 
 export interface SfuOptions {
+  selfId: string;
   url: string;
   token: string;
   screenToken: () => Promise<string>;
@@ -110,6 +111,19 @@ export class SfuSession extends Emitter implements MediaSession {
     return { kind: 'livekit', url: this.o.url, token: this.screenTok };
   }
 
+  /** Last-resort share from the WebView itself (PLAN 6.9), when the engine cannot run. */
+  async publishScreen(track: MediaStreamTrack | null) {
+    const pubs = [...this.room.localParticipant.trackPublications.values()];
+    for (const p of pubs) if (p.source === Track.Source.ScreenShare && p.track) await this.unpublish(p.track.mediaStreamTrack);
+    if (track)
+      await this.room.localParticipant.publishTrack(track, {
+        source: Track.Source.ScreenShare,
+        videoCodec: 'h264',
+        simulcast: false,
+        screenShareEncoding: { maxBitrate: 3_000_000, maxFramerate: 30 },
+      });
+  }
+
   async stats(): Promise<SessionStats> {
     const out: SessionStats = { rttMs: null, audioJitterMs: null, audioLoss: null, outKbps: null, inKbps: null, candidate: null };
     const pubs = [...this.room.localParticipant.trackPublications.values()];
@@ -155,7 +169,12 @@ export class SfuSession extends Emitter implements MediaSession {
     await this.room.localParticipant.unpublishTrack(track, false).catch(() => undefined);
   }
 
-  private onSubscribed(t: RemoteTrack, _pub: RemoteTrackPublication, p: RemoteParticipant) {
+  private onSubscribed(t: RemoteTrack, pub: RemoteTrackPublication, p: RemoteParticipant) {
+    // Our own engine publishes as "{me}#screen": never pay for decoding it (PLAN 1.3).
+    if (ownerOf(p.identity) === this.o.selfId) {
+      pub.setSubscribed(false);
+      return;
+    }
     const kind = kindOf(p, t);
     const id = `${p.identity}:${t.sid}`;
     // A shared screen wants the lowest latency; cameras tolerate a little buffer (PLAN 7.5).

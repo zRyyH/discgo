@@ -3,9 +3,11 @@
 // opened in a plain browser during development, e.g. as extra call participants)
 // it falls back to browser equivalents.
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { load, type Store } from '@tauri-apps/plugin-store';
+import type { EngineCommand, EngineEvent } from './engine';
 
 export const inTauri = '__TAURI_INTERNALS__' in window;
 
@@ -57,3 +59,23 @@ export const settings = {
     await (await settings.store()).set(key, value);
   },
 };
+
+// --- capture engine sidecar (PLAN 6.8) ---
+
+export const engine = {
+  available: inTauri,
+  start: () => invoke<void>('engine_start'),
+  send: (cmd: EngineCommand) => invoke<void>('engine_send', { line: JSON.stringify(cmd) }),
+  stop: () => invoke<void>('engine_stop'),
+  onEvent: (cb: (e: EngineEvent) => void) =>
+    listen<string>('engine://event', (e) => {
+      try {
+        cb(JSON.parse(e.payload) as EngineEvent);
+      } catch {
+        /* not a protocol line */
+      }
+    }),
+  onExit: (cb: (code: number | null) => void) => listen<number | null>('engine://exit', (e) => cb(e.payload)),
+};
+
+export const keepDisplayOn = (on: boolean) => (inTauri ? invoke<void>('power_keep_display', { on }) : Promise.resolve());

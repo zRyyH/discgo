@@ -1,15 +1,28 @@
-// Dev-only call tooling for phase 5 checks, driven by URL params:
+// Dev-only call tooling for phase 5/6 checks, driven by URL params:
 //   ?autojoin=<voice channel id>  join that channel once connected
 //   ?report=1                     post call state to the spike harness every second
 //   ?force_p2p_fail=1             (read by media/call.ts) make P2P fail, like a peer without UDP
 //   ?cam=1 / ?mute=1              turn the camera on / mute once in the call
+//   ?share=1[&preset=1440p60]     share the primary monitor once in the call (Tauri only)
 import { useCall } from '../media/call';
+import { useScreen } from '../media/ScreenShare';
+import type { Preset } from '../shared/engine';
 import { useCommunity } from '../stores/community';
 import { useSpeaking } from '../stores/speaking';
 import { useUi } from '../stores/ui';
 import { useVoice } from '../stores/voice';
 
 const HARNESS = 'http://127.0.0.1:8090/report';
+
+function shareOnce(preset: Preset) {
+  useScreen.getState().openPicker();
+  const unsub = useScreen.subscribe((s) => {
+    const m = s.sources?.monitors.find((x) => x.primary) ?? s.sources?.monitors[0];
+    if (!m) return;
+    unsub();
+    void s.start({ source: { kind: 'monitor', id: m.id }, label: m.name, preset, content_mode: 'text', system_audio: false });
+  });
+}
 
 export function startDevCallTools() {
   const q = new URLSearchParams(location.search);
@@ -30,10 +43,12 @@ export function startDevCallTools() {
     applied = true;
     if (q.get('cam') === '1') void c.toggleCam();
     if (q.get('mute') === '1') useVoice.getState().toggleMute();
+    if (q.get('share') === '1') shareOnce((q.get('preset') as Preset | null) ?? '1080p60');
   });
   if (q.get('report') === '1') {
     setInterval(() => {
       const c = useCall.getState();
+      const sc = useScreen.getState();
       const me = useCommunity.getState().me;
       void fetch(HARNESS, {
         method: 'POST',
@@ -55,6 +70,12 @@ export function startDevCallTools() {
           mute: useVoice.getState().selfMute,
           cam: c.camOn,
           error: c.error,
+          screen: sc.status,
+          screen_fps: sc.stats?.fps_encoded,
+          screen_kbps: sc.stats?.bitrate_kbps,
+          zero_copy: sc.started?.zero_copy,
+          screen_resume_ms: sc.resumeMs,
+          screen_error: sc.error,
         }),
       });
     }, 1000);

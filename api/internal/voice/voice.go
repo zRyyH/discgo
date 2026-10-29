@@ -183,11 +183,17 @@ func (m *Manager) P2PFailed(userID uuid.UUID, sessionID string) {
 	o := &outbox{}
 	if p, ok := m.users[userID]; ok {
 		r := m.rooms[p.channelID]
-		if r.mode == P2P && r.sessionID == sessionID {
-			if a, b, ok := pairOf(r); ok {
-				m.blocked[pairKey(a, b)] = time.Now().Add(m.cfg.BlockTTL)
+		if a, b, ok := pairOf(r); ok && r.mode == P2P && r.sessionID == sessionID {
+			other := a
+			if other == p {
+				other = b
 			}
-			m.recompute(p.channelID, r, o, nil)
+			// A peer whose app closed or crashed also looks like a failed connection;
+			// its gateway connection is gone too, and the grace period handles it.
+			if other.connID != 0 {
+				m.blocked[pairKey(a, b)] = time.Now().Add(m.cfg.BlockTTL)
+				m.recompute(p.channelID, r, o, nil)
+			}
 		}
 	}
 	m.mu.Unlock()

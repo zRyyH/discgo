@@ -87,7 +87,9 @@ fn main() {
                         m.thumbnail = thumbnails::monitor(m.x, m.y, m.width, m.height);
                     }
                     for w in &mut windows {
-                        let hwnd = windows::Win32::Foundation::HWND(w.id.parse::<usize>().unwrap_or(0) as *mut _);
+                        let hwnd = windows::Win32::Foundation::HWND(
+                            w.id.parse::<usize>().unwrap_or(0) as *mut _,
+                        );
                         w.thumbnail = thumbnails::window(hwnd);
                     }
                 }

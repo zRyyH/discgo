@@ -24,7 +24,7 @@ export interface StartParams {
 
 export type EngineCommand =
   | { cmd: 'probe'; force?: boolean }
-  | { cmd: 'list_sources' }
+  | { cmd: 'list_sources'; thumbnails?: boolean }
   | ({ cmd: 'start' } & StartParams)
   | { cmd: 'update'; preset?: Preset; content_mode?: ContentMode }
   | { cmd: 'sdp'; session_id: string; type: SdpKind; sdp: string }
@@ -58,6 +58,7 @@ export interface MonitorInfo {
   width: number;
   height: number;
   adapter: number | null;
+  thumbnail?: string;
 }
 
 export interface WindowInfo {
@@ -66,6 +67,7 @@ export interface WindowInfo {
   process: string;
   width: number;
   height: number;
+  thumbnail?: string;
 }
 
 export interface EngineStats {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useCall } from '../media/call';
+import { useScreen } from '../media/ScreenShare';
 import { useCommunity } from '../stores/community';
 import { useUi } from '../stores/ui';
 
@@ -20,6 +21,7 @@ export function DebugOverlay() {
   const toggle = useUi((s) => s.toggleDebug);
   const call = useCall();
   const members = useCommunity((s) => s.members);
+  const screen = useScreen();
   const [videos, setVideos] = useState<VideoStats[]>([]);
 
   useEffect(() => {
@@ -90,6 +92,26 @@ export function DebugOverlay() {
           <span className="truncate text-text-1">{v ?? '—'}</span>
         </div>
       ))}
+      {screen.status !== 'idle' && (
+        <div className="mt-2 border-t border-border pt-1">
+          <div className="text-text-1">engine · {screen.status}</div>
+          {screen.started && (
+            <div>
+              {screen.started.encoder} · zero_copy {String(screen.started.zero_copy)} · {screen.started.width}×{screen.started.height}@
+              {screen.started.fps}
+            </div>
+          )}
+          {screen.stats && (
+            <div>
+              cap {screen.stats.fps_captured.toFixed(0)} / enc {screen.stats.fps_encoded.toFixed(0)} fps · {screen.stats.bitrate_kbps}/
+              {screen.stats.target_kbps} kbit/s · enc {screen.stats.encode_ms_p50.toFixed(1)}/{screen.stats.encode_ms_p99.toFixed(1)} ms · drop{' '}
+              {screen.stats.dropped}
+            </div>
+          )}
+          {screen.resumeMs != null && <div>retomou em {screen.resumeMs} ms</div>}
+          {screen.error && <div className="text-danger">{screen.error}</div>}
+        </div>
+      )}
       {videos.map((v) => (
         <div key={v.id} className="mt-2 border-t border-border pt-1">
           <div className="text-text-1">

@@ -145,3 +145,23 @@ dev-1 against the local API and LiveKit. Numbers from the `?report=1` call repor
 Mouth-to-ear latency was not measured directly. On localhost it is about one 20 ms
 Opus frame + the ~30 ms jitter buffer + capture/playout device buffers; a real check
 needs two machines and a loopback recording.
+
+## Phase 6 — 2026-10-29 (dev-1, screen sharing in the app)
+
+The Tauri app (dev1) shares the 4K primary monitor through the engine sidecar at
+1080p60; viewers are dev UI windows in Edge (`?share=1`, `?report=1`).
+
+| What | Result |
+|---|---|
+| P2P share, one viewer | engine `nvd3d11h264enc`, `zero_copy=true`, 58.8 fps encoded, ~10 Mbit/s (1 s window); viewer receives the screen over its own receive-only RTCPeerConnection |
+| SFU share, two viewers | both viewers receive `dev1:screen` through LiveKit (`{user_id}#screen` participant) |
+| Two sharers at once in the SFU | second engine publishing as `dev2#screen` (720p30): every other participant receives both screens |
+| Transport switch while sharing | P2P → SFU (third person joins): share running again 1,450 ms after the new session connected; SFU → P2P: 134 ms |
+| Engine killed while sharing | app restarts the sidecar and the share: 903 ms from restart to `started`, ≈ 2.4 s wall clock from the kill |
+| Source picker thumbnails (GDI) | 1 monitor + 3 windows, 21-35 KB PNG each, no WGC captures opened |
+| Zero-copy on AMD and Intel | not tested (no such GPU on dev-1) |
+| `getDisplayMedia` fallback (720p30, SFU only) | implemented, not exercised |
+
+Fixed on the way: the server no longer blocks a pair for P2P when `p2p_failed` comes
+from a peer whose gateway connection already dropped (app closed or crashed); the
+SFU session no longer subscribes to its own `#screen` participant.

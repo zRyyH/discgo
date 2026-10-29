@@ -1,13 +1,15 @@
 import { HeadphoneOff, Headphones, Mic, MicOff, MonitorUp, PhoneOff, Video, VideoOff } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useCall } from '../media/call';
+import { useScreen } from '../media/ScreenShare';
+import { engine } from '../shared/shell';
 import { useCommunity } from '../stores/community';
 import { useUi } from '../stores/ui';
 import { useVoice } from '../stores/voice';
 import { IconButton, cx } from './ui';
 
 /** Floating call controls at the bottom of the center pane (PLAN 8). */
-export function VoiceBar({ onShare, sharing }: { onShare?: () => void; sharing?: boolean }) {
+export function VoiceBar() {
   const { channelId, selfMute, selfDeaf, toggleMute, toggleDeaf, leave } = useVoice(
     useShallow((s) => ({
       channelId: s.channelId,
@@ -23,7 +25,10 @@ export function VoiceBar({ onShare, sharing }: { onShare?: () => void; sharing?:
     useShallow((s) => ({ mode: s.mode, state: s.state, rtt: s.stats?.rttMs, camOn: s.camOn, toggleCam: s.toggleCam, error: s.error })),
   );
   const setView = useUi((s) => s.setView);
+  const share = useScreen(useShallow((s) => ({ status: s.status, open: s.openPicker, stop: s.stop, error: s.error })));
+  const sharing = share.status === 'sharing' || share.status === 'starting' || share.status === 'restarting';
   if (!channelId) return null;
+  const shareLabel = sharing ? 'Parar de compartilhar' : share.status === 'error' ? `Erro: ${share.error}` : 'Compartilhar tela';
 
   const status =
     mode === 'idle'
@@ -50,10 +55,11 @@ export function VoiceBar({ onShare, sharing }: { onShare?: () => void; sharing?:
         <IconButton icon={camOn ? Video : VideoOff} label={camOn ? 'Desligar câmera' : 'Ligar câmera'} active={camOn} onClick={() => void toggleCam()} />
         <IconButton
           icon={MonitorUp}
-          label={sharing ? 'Parar de compartilhar' : 'Compartilhar tela'}
+          label={shareLabel}
           active={sharing}
-          disabled={!onShare || mode === 'idle'}
-          onClick={onShare}
+          danger={share.status === 'error'}
+          disabled={mode === 'idle' || (!engine.available && mode !== 'sfu')}
+          onClick={sharing ? share.stop : share.open}
         />
         <div className="mx-1 h-6 w-px bg-border" />
         <IconButton icon={PhoneOff} label="Sair da chamada" danger onClick={leave} />

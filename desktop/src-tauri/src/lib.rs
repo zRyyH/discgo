@@ -1,6 +1,8 @@
 //! DiscGo desktop shell. Keep this crate thin (PLAN 7.2): it is the part that
 //! would be replaced if the shell moved back to Electron.
 
+mod engine;
+mod power;
 mod secrets;
 mod webview;
 
@@ -36,6 +38,8 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_shell::init())
+        .manage(engine::EngineState::default())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .on_permission_request(webview::on_permission_request)
@@ -57,6 +61,10 @@ pub fn run() {
             secrets::session_get,
             secrets::session_set,
             secrets::session_clear,
+            engine::engine_start,
+            engine::engine_send,
+            engine::engine_stop,
+            power::power_keep_display,
         ])
         .run(tauri::generate_context!())
         .expect("error while running DiscGo");
