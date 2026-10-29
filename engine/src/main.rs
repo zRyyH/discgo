@@ -49,7 +49,8 @@ fn main() {
     let stdin = std::io::stdin();
     for line in stdin.lock().lines() {
         let Ok(line) = line else { break };
-        let line = line.trim();
+        // Windows PowerShell writes a UTF-8 BOM before the first line it pipes in.
+        let line = line.trim_start_matches('\u{feff}').trim();
         if line.is_empty() {
             continue;
         }
