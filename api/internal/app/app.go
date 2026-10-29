@@ -50,8 +50,12 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, o Overrides) 
 		ClientSecret: cfg.GoogleClientSecret,
 		RedirectURL:  cfg.PublicURL + "/v1/auth/google/callback",
 		SessionTTL:   cfg.SessionTTL,
-	}, func(u db.User) {
-		hub.Broadcast(protocol.OpMemberAdd, protocol.Member{User: protocol.FromUser(u), Status: "offline"})
+	}, func(u db.User, created bool) {
+		if created {
+			hub.Broadcast(protocol.OpMemberAdd, protocol.Member{User: protocol.FromUser(u), Status: "offline"})
+		} else {
+			hub.Broadcast(protocol.OpMemberUpdate, protocol.FromUser(u))
+		}
 	})
 	hub = gateway.NewHub(log, pool, authSvc, cfg.CommunityName)
 	voiceMgr := voice.New(voice.Config{

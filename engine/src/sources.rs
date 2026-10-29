@@ -61,6 +61,7 @@ pub fn monitors() -> Vec<MonitorInfo> {
                 width: r.right - r.left,
                 height: r.bottom - r.top,
                 adapter: adapter_for_monitor(m),
+                thumbnail: None,
             })
         })
         .collect()
@@ -132,6 +133,7 @@ pub fn windows() -> Vec<WindowInfo> {
                 process: process_name(pid).unwrap_or_default(),
                 width: rect.right - rect.left,
                 height: rect.bottom - rect.top,
+                thumbnail: None,
             })
         })
         .collect()

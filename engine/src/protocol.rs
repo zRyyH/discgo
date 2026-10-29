@@ -12,7 +12,11 @@ pub enum Command {
         #[serde(default)]
         force: bool,
     },
-    ListSources,
+    ListSources {
+        /// Include 320 px PNG thumbnails (data URLs) for the picker.
+        #[serde(default)]
+        thumbnails: bool,
+    },
     Start(StartParams),
     Update {
         preset: Option<Preset>,
@@ -174,6 +178,8 @@ pub struct MonitorInfo {
     pub width: i32,
     pub height: i32,
     pub adapter: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thumbnail: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -183,6 +189,8 @@ pub struct WindowInfo {
     pub process: String,
     pub width: i32,
     pub height: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thumbnail: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -54,14 +54,15 @@ type Identity struct {
 	AvatarURL   string
 }
 
-// UserCreated is called after a new member joins through login.
-type UserCreated func(db.User)
+// UserChanged is called after a login creates a member (created=true) or
+// changes an existing member's name, email or avatar.
+type UserChanged func(u db.User, created bool)
 
 type Service struct {
 	pool      *pgxpool.Pool
 	q         *db.Queries
 	cfg       Config
-	onCreated UserCreated
+	onChanged UserChanged
 
 	oidcOnce sync.Once
 	provider *oidc.Provider
@@ -83,12 +84,12 @@ type issuedCode struct {
 	expires time.Time
 }
 
-func New(pool *pgxpool.Pool, cfg Config, onCreated UserCreated) *Service {
+func New(pool *pgxpool.Pool, cfg Config, onChanged UserChanged) *Service {
 	return &Service{
 		pool:      pool,
 		q:         db.New(pool),
 		cfg:       cfg,
-		onCreated: onCreated,
+		onChanged: onChanged,
 		states:    map[string]pendingLogin{},
 		codes:     map[string]issuedCode{},
 	}
@@ -178,8 +179,8 @@ func (s *Service) Login(ctx context.Context, id Identity, invite string) (string
 	if id.DisplayName == "" {
 		id.DisplayName, _, _ = strings.Cut(id.Email, "@")
 	}
-	var created *db.User
 	var user db.User
+	var created, changed bool
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		if err := q.LockUserCreation(ctx); err != nil {
@@ -187,6 +188,11 @@ func (s *Service) Login(ctx context.Context, id Identity, invite string) (string
 		}
 		existing, err := q.GetUserByGoogleSub(ctx, id.Subject)
 		if err == nil {
+			changed = existing.Email != id.Email || existing.DisplayName != id.DisplayName || existing.AvatarUrl != id.AvatarURL
+			if !changed {
+				user = existing
+				return nil
+			}
 			user, err = q.UpdateUserProfile(ctx, db.UpdateUserProfileParams{
 				ID: existing.ID, Email: id.Email, DisplayName: id.DisplayName, AvatarUrl: id.AvatarURL,
 			})
@@ -215,14 +221,14 @@ func (s *Service) Login(ctx context.Context, id Identity, invite string) (string
 			ID: uuid.Must(uuid.NewV7()), GoogleSub: id.Subject, Email: id.Email,
 			DisplayName: id.DisplayName, AvatarUrl: id.AvatarURL, Role: role,
 		})
-		created = &user
+		created = true
 		return err
 	})
 	if err != nil {
 		return "", err
 	}
-	if created != nil && s.onCreated != nil {
-		s.onCreated(*created)
+	if (created || changed) && s.onChanged != nil {
+		s.onChanged(user, created)
 	}
 	code := randomToken(24)
 	s.mu.Lock()

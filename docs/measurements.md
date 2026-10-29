@@ -124,3 +124,24 @@ not enabled on dev-1.
 
 Not covered: Google login with real accounts (needs OAuth client credentials), and the
 side-by-side visual review with Discord.
+
+## Phase 5 — 2026-10-29 (dev-1, voice and webcam)
+
+Participants: the Tauri app (real microphone) and/or the dev UI in Edge app windows
+with Chromium's fake microphone/camera (`desktop/scripts/participant.ps1`), all on
+dev-1 against the local API and LiveKit. Numbers from the `?report=1` call reports.
+
+| What | Result |
+|---|---|
+| 2 people → P2P | connected 585-641 ms after `voice_session`; host/UDP pair; RTT ≈ 0 ms; voice jitter buffer 31-33 ms; speaking detected on both sides |
+| Third joins → everyone in SFU | 349 / 352 / 794 ms from `voice_session` to connected (budget 2 s); every client receives the other two mics |
+| Mute and camera across the switch | dev1 muted with camera on, dev3 camera on in P2P → after the switch to SFU: same mute, both cameras still published and received by the newcomer |
+| Third leaves (window closed) → back to P2P | 21 s (10 s disconnect grace + 10 s hysteresis), P2P connected in 100 ms |
+| P2P cannot connect (`?force_p2p_fail=1`: relay-only ICE, no TURN, as a client without UDP) | P2P timeout at 8 s → `p2p_failed` → both in SFU 10 s after joining, connected in 161-181 ms |
+| App minimized 5 min in a P2P call | 300/300 one-second reports, connected all the time, remote track present all the time, jitter buffer avg 30 ms / max 31 ms |
+| Voice call, Tauri app, P2P, real mic (dev build, Vite + React dev mode) | 0.43 % CPU of 12 threads (5.2 % of one core), 164 MB private working set (budget 3 % / 180 MB) |
+| Voice bitrate on the wire | 80-155 kbit/s per direction: Opus 64 kbit/s with RED (redundant copy) plus headers |
+
+Mouth-to-ear latency was not measured directly. On localhost it is about one 20 ms
+Opus frame + the ~30 ms jitter buffer + capture/playout device buffers; a real check
+needs two machines and a loopback recording.

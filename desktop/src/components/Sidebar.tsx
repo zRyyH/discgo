@@ -6,6 +6,7 @@ import { useCommunity } from '../stores/community';
 import { useUi } from '../stores/ui';
 import { useVoice } from '../stores/voice';
 import { useSpeaking } from '../stores/speaking';
+import { VolumeMenu } from './MediaStage';
 import { Avatar, ICON, IconButton, cx } from './ui';
 
 export function Sidebar() {
@@ -65,6 +66,7 @@ const TextChannelRow = memo(function TextChannelRow({ channel }: { channel: Chan
 const VoiceChannelRow = memo(function VoiceChannelRow({ channel }: { channel: Channel }) {
   const joined = useVoice((s) => s.channelId === channel.id);
   const join = useVoice((s) => s.join);
+  const setView = useUi((s) => s.setView);
   const ids = useCommunity(
     useShallow((s) =>
       Object.values(s.voiceStates)
@@ -77,7 +79,10 @@ const VoiceChannelRow = memo(function VoiceChannelRow({ channel }: { channel: Ch
     <div className="mb-0.5">
       <button
         type="button"
-        onClick={() => join(channel.id)}
+        onClick={() => {
+          join(channel.id);
+          setView('call');
+        }}
         className={cx(
           'flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-body transition-colors duration-150',
           joined ? 'text-text-1' : 'text-text-2 hover:bg-bg-2 hover:text-text-1',
@@ -101,9 +106,10 @@ const VoiceParticipant = memo(function VoiceParticipant({ userId }: { userId: st
   const member = useCommunity((s) => s.members[userId]);
   const state = useCommunity((s) => s.voiceStates[userId]);
   const speaking = useSpeaking((s) => s.ids.has(userId));
+  const isMe = useCommunity((s) => s.me?.id === userId);
   if (!member || !state) return null;
-  return (
-    <li className="flex h-7 items-center gap-2 rounded-md px-1 text-body text-text-2">
+  const row = (
+    <li className="flex h-7 items-center gap-2 rounded-md px-1 text-body text-text-2 hover:bg-bg-2">
       <Avatar id={member.id} name={member.display_name} url={member.avatar_url} size={20} ring={speaking && !state.self_mute} />
       <span className="flex-1 truncate">{member.display_name}</span>
       {state.self_deaf ? (
@@ -113,6 +119,7 @@ const VoiceParticipant = memo(function VoiceParticipant({ userId }: { userId: st
       ) : null}
     </li>
   );
+  return isMe ? row : <VolumeMenu userId={userId}>{row}</VolumeMenu>;
 });
 
 function UserPanel() {

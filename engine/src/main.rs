@@ -11,6 +11,7 @@ mod runtime;
 mod signaller_gateway;
 mod sources;
 mod stats;
+mod thumbnails;
 
 use std::io::{BufRead, Write};
 
@@ -78,10 +79,20 @@ fn main() {
                     warnings: result.warnings,
                 });
             }
-            Command::ListSources => emit(&Event::Sources {
-                monitors: sources::monitors(),
-                windows: sources::windows(),
-            }),
+            Command::ListSources { thumbnails } => {
+                let mut monitors = sources::monitors();
+                let mut windows = sources::windows();
+                if thumbnails {
+                    for m in &mut monitors {
+                        m.thumbnail = thumbnails::monitor(m.x, m.y, m.width, m.height);
+                    }
+                    for w in &mut windows {
+                        let hwnd = windows::Win32::Foundation::HWND(w.id.parse::<usize>().unwrap_or(0) as *mut _);
+                        w.thumbnail = thumbnails::window(hwnd);
+                    }
+                }
+                emit(&Event::Sources { monitors, windows });
+            }
             Command::Start(params) => {
                 if session.take().is_some() {
                     emit(&Event::Stopped);

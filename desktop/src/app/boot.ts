@@ -1,5 +1,6 @@
 // Wires the gateway, deep links and stores together. Runs once at startup.
 import { gateway } from '../api/gateway';
+import { onRtcSignal, startCallController } from '../media/call';
 import { play } from '../lib/sounds';
 import type { ServerEvent } from '../shared/protocol';
 import { onDeepLink } from '../shared/shell';
@@ -15,12 +16,14 @@ export async function boot() {
   if (booted) return;
   booted = true;
 
+  startCallController();
   gateway.onStatus((s) => useCommunity.getState().setStatus(s));
   gateway.on((ev) => {
     voiceSounds(ev);
     useCommunity.getState().apply(ev);
     useMessages.getState().apply(ev);
     useVoice.getState().apply(ev, useCommunity.getState().me?.id);
+    if (ev.op === 'rtc_signal') onRtcSignal(ev.d);
   });
 
   await onDeepLink((url) => {
@@ -41,6 +44,7 @@ export async function boot() {
   if (devEmail && useSession.getState().status === 'signed_out') {
     await useSession.getState().devLogin(devEmail, devEmail.split('@')[0]);
   }
+  if (import.meta.env.DEV) void import('../spike/callReport').then((m) => m.startDevCallTools());
 }
 
 /** Join/leave chimes when someone else enters or leaves our voice channel. */

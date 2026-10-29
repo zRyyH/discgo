@@ -4,6 +4,10 @@ import { useCommunity } from '../stores/community';
 import { useSettings } from '../stores/settings';
 import { useUi } from '../stores/ui';
 import { Composer } from './Composer';
+import { DebugOverlay } from './DebugOverlay';
+import { MediaStage } from './MediaStage';
+import { VoiceBar } from './VoiceBar';
+import { useVoice } from '../stores/voice';
 import { MemberList } from './MemberList';
 import { MessageList } from './MessageList';
 import { SettingsDialog } from './SettingsDialog';
@@ -32,18 +36,33 @@ export function Workspace() {
         <Main />
       </div>
       <SettingsDialog />
+      <DebugOverlay />
     </div>
   );
 }
 
 function Main() {
+  const view = useUi((s) => s.view);
+  const voiceChannel = useVoice((s) => s.channelId);
+  if (view === 'call' && voiceChannel) {
+    return (
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <MediaStage />
+        <VoiceBar />
+      </div>
+    );
+  }
+  return <ChatPane />;
+}
+
+function ChatPane() {
   const channelId = useUi((s) => s.channelId);
   const channel = useCommunity((s) => s.channels.find((c) => c.id === channelId && c.kind === 'text'));
   const showMembers = useSettings((s) => s.showMembers);
   const update = useSettings((s) => s.update);
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col bg-bg-2">
+    <div className="relative flex min-w-0 flex-1 flex-col bg-bg-2">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
         {channel && (
           <>
@@ -67,8 +86,19 @@ function Main() {
         </div>
         {showMembers && <MemberList />}
       </div>
+      <VoiceBarSpacer />
     </div>
   );
+}
+
+/** In the chat the voice bar floats above the composer. */
+function VoiceBarSpacer() {
+  const inVoice = useVoice((s) => !!s.channelId);
+  return inVoice ? (
+    <div className="relative h-16 shrink-0">
+      <VoiceBar />
+    </div>
+  ) : null;
 }
 
 /** Opens the last used text channel (or the first one) and remembers the choice. */
@@ -83,7 +113,7 @@ function useDefaultChannel() {
     const text = channels.filter((c) => c.kind === 'text');
     if (channelId && text.some((c) => c.id === channelId)) return;
     const next = text.find((c) => c.id === last) ?? text[0];
-    if (next || channelId) select(next?.id ?? null);
+    if (next || channelId) select(next?.id ?? null, false);
   }, [channels, channelId, last, select]);
 
   useEffect(() => {

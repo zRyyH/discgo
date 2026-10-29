@@ -1510,10 +1510,13 @@ name = "discgo-engine"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.23.1",
  "glib 0.22.10",
  "gst-plugin-webrtc",
  "gstreamer",
+ "gstreamer-app",
  "gstreamer-sdp",
+ "gstreamer-video",
  "gstreamer-webrtc",
  "log",
  "serde",
