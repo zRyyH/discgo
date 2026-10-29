@@ -1,0 +1,19 @@
+[package]
+name = "discgo"
+description = "DiscGo desktop shell"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "discgo_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde.workspace = true
+serde_json.workspace = true
+log.workspace = true

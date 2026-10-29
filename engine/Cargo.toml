@@ -1,0 +1,18 @@
+[package]
+name = "discgo-engine"
+description = "DiscGo native screen-capture engine (sidecar)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "discgo-engine"
+path = "src/main.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+log.workspace = true
+gstreamer = "0.25.4"
+windows = { version = "0.62.2", features = ["Win32_Graphics_Dxgi", "Win32_Foundation"] }

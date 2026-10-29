@@ -1,0 +1,33 @@
+# GStreamer plugins shipped with the engine (PLAN 6.10), one per line, without
+# the "gst" prefix and ".dll" suffix. Dependencies are resolved by collect.ps1.
+
+# core / base
+coreelements
+app
+videoconvertscale
+videorate
+videotestsrc
+audioconvert
+audioresample
+opus
+png
+
+# capture, GPU conversion, hardware encoders
+d3d11
+mediafoundation
+nvcodec
+amfcodec
+qsv
+wasapi2
+x264
+videoparsersbad
+
+# transport
+rtp
+rtpmanager
+webrtc
+nice
+dtls
+srtp
+rsrtp
+rswebrtc

@@ -1,0 +1,63 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
+/* Design tokens: PLAN.md section 8 and desktop/DESIGN.md. Dark theme only. */
+@theme {
+  --color-*: initial;
+  --color-bg-0: #0b0c10;
+  --color-bg-1: #111218;
+  --color-bg-2: #171923;
+  --color-bg-3: #1e2130;
+  --color-border: #262a3a;
+  --color-text-1: #e7e9f0;
+  --color-text-2: #9ba1b5;
+  --color-text-3: #646b80;
+  --color-accent: #8b9cff;
+  --color-ok: #3ddc97;
+  --color-danger: #ff5c6c;
+  --color-warn: #ffc857;
+  --color-transparent: transparent;
+  --color-white: #fff;
+
+  --font-sans: 'Inter Variable', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+
+  --text-meta: 12px;
+  --text-body: 13px;
+  --text-msg: 14px;
+  --text-title: 15px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg-0);
+  color: var(--color-text-1);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

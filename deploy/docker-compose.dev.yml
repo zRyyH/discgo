@@ -1,0 +1,31 @@
+# Dev infrastructure: PostgreSQL + LiveKit in --dev mode (key "devkey", secret "secret").
+# The API, engine and desktop app run on the host (see README.md).
+name: discgo-dev
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: discgo
+      POSTGRES_PASSWORD: discgo
+      POSTGRES_DB: discgo
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U discgo -d discgo"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    command: ["--dev", "--bind", "0.0.0.0", "--node-ip", "127.0.0.1"]
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+
+volumes:
+  pgdata:
