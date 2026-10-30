@@ -107,6 +107,14 @@ apps also check at start and every 6 h. The app downloads the package (minisign-
 shows a 3 s countdown, the silent installer restarts it, and it goes back to the voice
 channel the user was in. The titlebar button only appears if that fails.
 
+New users download `releases/DiscGo-Setup.exe` (a copy of the latest installer). A
+double-click install asks nothing: one dark progress page, then the app opens. That page
+is a patched copy of Tauri's NSIS template in
+[desktop/src-tauri/installer/](desktop/src-tauri/installer/); after upgrading
+`@tauri-apps/cli`, regenerate it with `node desktop/scripts/installer-template.mjs` (it
+fails if an anchor moved). The tray icons and installer marks are drawn by
+`node desktop/scripts/brand-art.mjs`.
+
 Order for a release: deploy the API first (it must keep working with the previous app
 version), bump `version` in `desktop/src-tauri/tauri.conf.json`, tag. The CI uploads
 `latest.json` last, so apps are only told once the installer is there.

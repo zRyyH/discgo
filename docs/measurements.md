@@ -225,3 +225,30 @@ started) gets a new P2P session for both peers. After the fix, same machine:
 |---|---|
 | Polite peer (browser participant closed and reopened in 2 s) | new session, P2P connected 380 ms after it, no `p2p_failed` |
 | Impolite peer (installed app, forced update 0.1.2 → 0.1.3) | new session, P2P connected 526 ms after it; app away from the gateway 3.8 s |
+
+## Phase 9D — 2026-10-29 (dev-1, tray)
+
+Installed local build 0.1.3, delivered by the forced update itself, in a P2P call with a
+browser participant. The window's close was sent as `WM_CLOSE` (what the X and Alt+F4 do).
+
+| Check | Result |
+|---|---|
+| `WM_CLOSE` on the window | window hidden, process alive, tray icon registered (`HKCU\Control Panel\NotifyIconSettings`, tooltip "DiscGo"); Windows 11 shows it under "^" until the user pins it |
+| 10 min hidden in the call (22:04:40 → 22:14:54, sampled every 30 s) | same P2P session the whole time, app's gateway never dropped, RTT from the app's RTCP kept updating (0–5 ms), participant kept receiving the app's track |
+| Start the exe again while hidden | the running instance shows its window (single instance), no second process |
+| Start with Windows | `HKCU\...\Run\DiscGo = "...\discgo.exe --autostart"` written on first start (setting on by default) |
+
+Not checked here (needs a person): the icon turning green while *you* speak (the app
+used this machine's real microphone), the tray menu's Silenciar / Ensurdecer / Sair, and a
+real log-on start with `--autostart` staying in the tray.
+
+## Phase 9B — 2026-10-29 (dev-1, installer)
+
+| Check | Result |
+|---|---|
+| Double-click install (0.1.4 over 0.1.3, 0.1.5 over itself) | one dark page (mark, "Instalando o DiscGo…", accent bar), no questions, about 3 s; the running app is closed and the new one opens by itself |
+| Forced update through the new template (silent, 0.1.4 → 0.1.5) | works as before: away from the gateway 4.4 s |
+| Installer size | 15.4 MiB (16,171,144 bytes; budget 90 MB) |
+
+The progress bar is the Windows control with its visual style removed so it takes the
+accent; the SmartScreen warning on first run stays until the code is signed.

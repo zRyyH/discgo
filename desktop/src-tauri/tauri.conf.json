@@ -53,7 +53,13 @@
     "shortDescription": "DiscGo",
     "windows": {
       "nsis": {
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "template": "installer/installer.nsi",
+        "installerHooks": "installer/discgo.nsh",
+        "languages": [
+          "PortugueseBR"
+        ],
+        "installerIcon": "icons/icon.ico"
       },
       "webviewInstallMode": {
         "type": "downloadBootstrapper"

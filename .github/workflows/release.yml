@@ -87,6 +87,8 @@ jobs:
           node desktop/scripts/latest-json.mjs $base "${{ github.ref_name }}" | Out-File -Encoding utf8NoBOM latest.json
           $installer = Get-Item target/release/bundle/nsis/*-setup.exe
           aws s3 cp $installer.FullName "s3://${{ vars.RELEASES_BUCKET }}/releases/$($installer.Name)"
+          # A stable download link for new users (the updater keeps the versioned name).
+          aws s3 cp $installer.FullName "s3://${{ vars.RELEASES_BUCKET }}/releases/DiscGo-Setup.exe" --cache-control "no-cache"
           # latest.json last: clients only see the new version once the installer is there.
           aws s3 cp latest.json "s3://${{ vars.RELEASES_BUCKET }}/releases/latest.json" --cache-control "no-cache"
 
