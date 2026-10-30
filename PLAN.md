@@ -229,12 +229,13 @@ Cliente → servidor:
 Servidor → cliente:
 - `voice_session` `{channel_id, session_id, mode:"p2p"|"sfu", peer_user_id?, livekit_url?}` (para quem está no canal)
 - `rtc_signal` (relay, mesmo corpo + `from_user_id`)
+- `app_update` `{version, notes}` (fase 9A): broadcast quando o `latest.json` muda e, depois do `ready`, para quem se identificou com versão menor
 - demais eventos da v1 (`ready`, `message_*`, `channel_*`, `member_*`, `presence_update`, `voice_state_update`)
 
 Voice state vem agora do `voice_join`/`voice_leave`, com os webhooks do LiveKit como confirmação secundária (um `participant_left` sem `voice_leave` em 10 s remove o usuário). O pacote `internal/voice` guarda `channel → {participants, mode, session_id, timer}` e o bloqueio de pares.
 
 ### 5.4 Configuração (env) adicionada
-`P2P_MAX_PARTICIPANTS=2`, `P2P_SWITCH_DELAY=10s`, `P2P_BLOCK_TTL=1h`, `STUN_URLS`.
+`P2P_MAX_PARTICIPANTS=2`, `P2P_SWITCH_DELAY=10s`, `P2P_BLOCK_TTL=1h`, `STUN_URLS`. Fase 9A: `RELEASES_URL` (o `latest.json` do updater; a API o consulta a cada 60 s com `If-None-Match`).
 
 ## 6. Engine de captura (engine/) — Rust + GStreamer
 
@@ -440,6 +441,35 @@ Cada fase termina com: código compilando e lint limpo, testes da fase passando,
 - Tauri bundler NSIS com bootstrapper do WebView2, engine como `externalBin`, runtime GStreamer em `resources`, updater com `latest.json` no S3, CI em tag `v*`, página HTML de fallback do login. Assinatura de código opcional (documentar).
 - Aceite: instalar em máquina limpa, logar, entrar em voz, compartilhar tela, receber a atualização seguinte; instalador ≤ 90 MB.
 
+### Fase 9 — Atualização forçada, bandeja, polimento e instalador
+Aprovada em 2026-10-29 (seção 13). Ordem: 9A → 9D → 9C → 9B. Começa de um commit limpo (cadastro aberto e amigos commitados antes). Pré-requisito para ligar a 9A em produção: certificado Authenticode (`bundle.windows.certificateThumbprint`), porque o Defender já quarentenou um `discgo.exe` atualizado sem assinatura; até lá, testar só nas máquinas do usuário.
+
+**9A — Atualização forçada em tempo real (~2,5 dias)**
+- API: `RELEASES_URL` (5.4); consulta o `latest.json` a cada 60 s; quando a versão muda, `Broadcast("app_update")`; no `identify`, cliente com versão menor (semver) recebe `app_update` logo após o `ready`. Teste Go com `httptest` servindo o `latest.json` mudando de versão.
+- Cliente: `CLIENT_VERSION` passa a vir de `app_version()` (hoje fixo em `0.1.0`). Em `app_update` ou no check de 6 h: `check()` → `download()` com progresso → `install()`; a assinatura minisign continua sendo verificada pelo plugin, o evento é só gatilho. Sem botão: faixa no topo (mesmo lugar de "Reconectando…") `Nova versão X · baixando N %` → `Reiniciando em 3…`; em chamada segue igual. `plugins.updater.windows.installMode` vira `quiet`; o relaunch é automático. Falha: volta ao botão manual da titlebar e tenta de novo em 5 min.
+- Voltar: antes de instalar, grava `{voiceChannelId, view, selfMute, at}` no store persistido; ao reabrir, se `at` < 3 min, entra no mesmo canal e na mesma tela; toast `Atualizado para X`. Se a janela estava escondida na bandeja (9D) dentro de uma chamada, mostra; senão volta escondida.
+- Release: deploy da API (compatível com a versão anterior por uma versão) → bump de `version` em `tauri.conf.json` e `Cargo.toml` → tag → CI sobe instalador e por último o `latest.json` → API percebe em ≤ 60 s.
+- Aceite: dois clientes em chamada de voz, `latest.json` local 0.1.0 → 0.1.1 (procedimento de `docs/measurements.md`, fase 8); os dois voltam à mesma chamada sem clique; tempo entre publicar e os dois de volta registrado.
+
+**9D — Bandeja do Windows (~1 dia)**
+- Shell: `CloseRequested` → `prevent_close()` + `hide()` (X da titlebar, Alt+F4); `tray-icon` do Tauri com clique esquerdo = mostrar/focar, menu = `Abrir o DiscGo`, `Silenciar`, `Ensurdecer` (marcáveis), `Sair` (`app.exit`, único jeito de sair; a atualização da 9A não passa pelo `CloseRequested`). Single-instance e deep link dão `show()` antes de focar. `tauri-plugin-window-state` sem o flag de visibilidade. `tauri-plugin-autostart` com `Iniciar com o Windows` em Configurações, junto de `Fechar para a bandeja` (ambos ligados por padrão).
+- Ícones 32×32 gerados do `icon.svg` em `src-tauri/icons/tray/`, embutidos com `include_image!`: fora de voz (anel no acento), em voz calado (anel + ponto verde), falando (anel verde), mudo/ensurdecido (anel + ponto vermelho); tooltip `DiscGo`, `DiscGo · <canal>`, `DiscGo · Mudo`/`Ensurdecido`. Badge de menções fica no Backlog com as notificações.
+- `app/tray.ts` assina `useSpeaking` + `useVoice`, deriva o estado e chama `tray_set_state` só quando muda; "falando" segura 300 ms e troca no máximo a cada 150 ms. A detecção já não depende da janela visível (P2P: `getStats` a 10 Hz; SFU: `ActiveSpeakersChanged`). Itens do menu emitem evento para o WebView, que chama `toggleMute`/`toggleDeaf`.
+- Aceite: janela escondida 10 min em chamada com áudio contínuo e ícone acompanhando a fala (a fase 1 validou minimizado, não escondido); compartilhamento de tela segue com a janela escondida; reabrir pelo Menu Iniciar e por `discgo://` mostra a janela.
+
+**9C — Polimento da UI (~2–3 dias, em 5 fatias)**
+- Princípio: a linguagem do login dentro do app (cartões de 20 px, brilhos estáticos, a marca, 1 ícone + 1 linha nos estados vazios, pouco texto) e movimento onde é seco. Regras de 7.6 mantidas: só `transform`, `opacity` e cor, 120–180 ms (220–260 ms só em entradas de tela), `prefers-reduced-motion`, sem `backdrop-filter`; listas animam só ao montar.
+- Fatia 1, fundação: keyframes `pop`, `slide-down`, `slide-up` em `styles.css`; `Toast` (1 linha, some sozinho; substitui os `<p>` de erro), `Card` e `Surface` em `ui.tsx`; diálogos com fade no overlay e `pop` no conteúdo (saída via `data-[state=closed]`); tooltips com deslize de 2 px; transição login → app (cartão sobe e some, workspace com fade) e "Conectando…" com o fundo do login e a marca pulsando; marca em 16 px na titlebar.
+- Fatia 2, sidebar e chat: pílula de acento no canal ativo; participantes de voz entram com `rise`; anel de fala com transição de cor; mic/fones com `pop` e anel de 2 px em `danger`; badge de amigos com `pop`; mensagens ao vivo entram com `rise` (histórico não); toolbar de hover com fade + deslize; botão de enviar com scale quando há texto; chips de anexo com `pop`; divisor de dia mais leve.
+- Fatia 3, amigos e configurações: abas com indicador animado; linhas com `rise` escalonado (≤ 6 × 30 ms); "Adicionar amigo" como cartão do login com o `UsernameHint`; sucesso `✓ Pedido enviado` com `pop`; nav das configurações com as linhas da sidebar, cada seção num `Card`; rodapé da conta `Atualizações automáticas · vX`, sem botão de verificar; toggles de bandeja e autostart (9D).
+- Fatia 4, chamada: tiles com `pop`; barra de voz sobe ao entrar e desce ao sair; controles do `MediaStage` somem com fade; chip P2P/SFU com transição de cor.
+- Fatia 5, texto e medição: texto de apoio com no máximo 1 linha e nenhum parágrafo com mais de 12 palavras fora de diálogos; `DESIGN.md` com a seção de movimento atualizada.
+- Aceite: ≤ 2 ms de scripting por frame no scroll (Performance panel do Edge, procedimento da fase 4), antes e depois; nenhuma animação fora de `transform`/`opacity`/cor; revisão visual lado a lado com o login.
+
+**9B — Instalador (nível 2, ½ a 1,5 dia)**
+- `template` NSIS customizado (cópia do template do Tauri 2.12 com as páginas trocadas): uma única página `nsDialogs`, fundo `#0B0C10`, a marca, "Instalando o DiscGo…" e a barra de progresso (controle do Windows; é a única parte que não é nossa); sem licença, pasta, sidebar ou header; ao terminar, abre o app. `languages: ["PortugueseBR"]`, `installerIcon`. O bootstrapper do WebView2, quando precisa rodar, é a janela da Microsoft. Download publicado como `DiscGo-Setup.exe` (o `latest.json` mantém o nome versionado).
+- Aceite: clique duplo → uma página → app aberto no login, sem nenhuma pergunta; atualização da 9A continua funcionando com o template novo; instalador ≤ 90 MB; o aviso do SmartScreen só some com o certificado.
+
 ## 11. Backlog (pós-v1)
 Segunda camada baixa para tela em SFU (segundo encoder), AV1 por padrão quando o parque suportar, HEVC quando o WebRTC do Chromium habilitar recepção por padrão, mesh P2P de voz para 3 ou 4 pessoas se as medições justificarem, push-to-talk, notificações, não lidas, markdown básico, RNNoise, expulsar/banir, DMs, múltiplos servidores, Redis + vários nós LiveKit, tema claro, suporte a HDR na captura.
 
@@ -454,6 +484,8 @@ Segunda camada baixa para tela em SFU (segundo encoder), AV1 por padrão quando 
 - Troca de modo durante a chamada gera 1 a 2 s de interrupção → histerese de 10 s e UI de "reconectando".
 - Runtime GStreamer faltando DLL em máquina limpa → teste em VM limpa nas fases 1 e 8; lista de DLLs versionada.
 - Repositório dentro do OneDrive → `node_modules` e `target/` sincronizados causam lentidão e corrupção; excluir as pastas da sincronização ou mover o repositório.
+- Atualização forçada (9A) sem Authenticode → um falso positivo do Defender derrubaria todos os clientes de uma vez; a 9A só liga em produção com o certificado, e a API fica compatível com a versão anterior por uma versão para quem não conseguir atualizar.
+- Janela escondida na bandeja (9D) é um estado diferente de minimizada para o WebView2 → aceite da 9D mede 10 min em chamada escondido; se houver throttling, plano B é minimizar em vez de esconder (`skip_taskbar`).
 
 ## 13. Registro de decisões
 - 2026-10-29 (v1): Electron + React/TS, Go, PostgreSQL, LiveKit self-hosted, S3, nginx, Magalu Cloud BR-SE1. Login Google via navegador do sistema + deep link. Um único servidor/comunidade.
@@ -498,3 +530,9 @@ Segunda camada baixa para tela em SFU (segundo encoder), AV1 por padrão quando 
   - Amigos: `POST /v1/friends {username}` manda o pedido (ou aceita na hora se o outro já tinha pedido), `PUT /v1/friends/{id}` aceita, `DELETE /v1/friends/{id}` remove amigo, recusa ou cancela. Os dois lados recebem `relationship_add`/`relationship_remove` pelo gateway, e o `ready` traz `relationships`. Por enquanto a amizade só aparece na tela de amigos (sem DMs, que seguem fora do escopo).
   - Foto: a do Google (`picture`), pedida em 256 px em vez de 96 px e atualizada a cada login. Sem foto ou com erro ao carregar, ficam as iniciais.
   - Com cadastro aberto, qualquer pessoa com conta Google vê os canais e a lista de membros; não há expulsar/banir (Backlog).
+- 2026-10-29 (fase 9, aprovada pelo usuário; detalhes na seção 10):
+  - Atualizações passam a ser forçadas e em tempo real: a API observa o `latest.json` e avisa pelo gateway (`app_update`); o cliente baixa, reinicia e volta ao mesmo canal de voz sem clique, mesmo em chamada. O botão "Atualizar e reiniciar" vira só o fallback de erro. O cliente deixa de se identificar com a versão fixa `0.1.0`.
+  - Fechar a janela esconde na bandeja, como o Discord; sair só pelo menu da bandeja. Ícone da bandeja muda com a voz (calado, falando em verde, mudo/ensurdecido em vermelho). `Iniciar com o Windows` entra (`tauri-plugin-autostart`), ligado por padrão.
+  - Instalador: NSIS com template próprio de uma página escura, sem perguntas, abrindo o app ao terminar (nível 2). Velopack foi considerado e descartado por trocar updater e instalador sem validação com o sidecar e o runtime GStreamer.
+  - Polimento: a linguagem visual do login vira a do app inteiro; animações só em `transform`/`opacity`/cor dentro das regras de 7.6.
+  - Ordem 9A → 9D → 9C → 9B: tudo que vier depois da 9A chega a todos sozinho; a bandeja muda como se "fecha" o app, e o polimento precisa saber disso; o instalador só aparece uma vez.

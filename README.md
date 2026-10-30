@@ -48,6 +48,9 @@ printf '{"cmd":"probe"}\n' | target/debug/discgo-engine.exe
 make desktop         # Tauri window with the React UI (Vite on :1420)
 ```
 
+Without make or Git Bash, [api.cmd](api.cmd) does the same as `make api`: run `api` in cmd
+or `.\api` in PowerShell from the repository root.
+
 API configuration is read from the environment; see [deploy/.env.example](deploy/.env.example).
 
 ## Engine runtime
