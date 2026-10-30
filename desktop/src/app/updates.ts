@@ -8,7 +8,7 @@ import { relaunch } from '@tauri-apps/plugin-process';
 import { check } from '@tauri-apps/plugin-updater';
 import { create } from 'zustand';
 import { gateway } from '../api/gateway';
-import { appVersion, engine, inTauri, settings } from '../shared/shell';
+import { appVersion, engine, inTauri, settings, windowControls } from '../shared/shell';
 import { useScreen } from '../media/ScreenShare';
 import { toast } from '../stores/toast';
 import { useUi } from '../stores/ui';
@@ -114,13 +114,16 @@ interface Resume {
   view: ReturnType<typeof useUi.getState>['view'];
   selfMute: boolean;
   selfDeaf: boolean;
+  /** The window was in the tray (PLAN fase 9D). */
+  hidden: boolean;
   at: number;
 }
 
 /** Saves where the user is, then releases the engine so the installer can replace it. */
 async function prepareRestart() {
   const { channelId, selfMute, selfDeaf } = useVoice.getState();
-  const resume: Resume = { channelId, view: useUi.getState().view, selfMute, selfDeaf, at: Date.now() };
+  const hidden = !(await windowControls.isVisible().catch(() => true));
+  const resume: Resume = { channelId, view: useUi.getState().view, selfMute, selfDeaf, hidden, at: Date.now() };
   await settings.set(RESUME_KEY, resume);
   await settings.flush();
 
@@ -151,5 +154,7 @@ export function resumeAfterUpdate(r: Resume, signedIn: boolean) {
     if (r.channelId) useVoice.setState({ channelId: r.channelId, selfMute: r.selfMute, selfDeaf: r.selfDeaf });
     if (r.view !== 'call' || r.channelId) useUi.getState().setView(r.view);
   }
+  // The installer starts the app with its window shown: back to the tray, unless in a call.
+  if (r.hidden && !(signedIn && r.channelId)) void windowControls.hide();
   void appVersion().then((v) => toast(`Atualizado para a versão ${v}`, 'ok'));
 }

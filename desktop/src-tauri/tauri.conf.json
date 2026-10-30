@@ -22,8 +22,8 @@
         "decorations": false,
         "shadow": true,
         "backgroundColor": "#0B0C10",
-        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-background-timer-throttling --disable-renderer-backgrounding --autoplay-policy=no-user-gesture-required",
-        "visible": true
+        "visible": false,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-background-timer-throttling --disable-renderer-backgrounding --autoplay-policy=no-user-gesture-required"
       }
     ],
     "security": {

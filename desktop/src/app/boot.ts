@@ -2,6 +2,7 @@
 import { gateway } from '../api/gateway';
 import { onRtcSignal, startCallController } from '../media/call';
 import { startScreenController } from '../media/ScreenShare';
+import { startTray } from './tray';
 import { resumeAfterUpdate, startUpdateChecks, takeResume } from './updates';
 import { play } from '../lib/sounds';
 import type { ServerEvent } from '../shared/protocol';
@@ -42,6 +43,7 @@ export async function boot() {
   }).catch(() => {});
 
   await useSettings.getState().load();
+  startTray();
   const resume = await takeResume();
   await useSession.getState().init();
   if (resume) resumeAfterUpdate(resume, useSession.getState().status === 'signed_in');

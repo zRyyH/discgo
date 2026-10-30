@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import { useShallow } from 'zustand/react/shallow';
 import { Check, Copy, Hash, Trash2, Volume2, X } from 'lucide-react';
 import { api, ApiError } from '../api/rest';
 import type { Channel } from '../shared/protocol';
@@ -16,6 +17,7 @@ const sections: { id: SettingsSection; label: string; admin?: boolean }[] = [
   { id: 'account', label: 'Minha conta' },
   { id: 'voice', label: 'Voz e vídeo' },
   { id: 'notifications', label: 'Sons' },
+  { id: 'app', label: 'Aplicativo' },
   { id: 'channels', label: 'Canais', admin: true },
   { id: 'members', label: 'Membros', admin: true },
 ];
@@ -55,6 +57,7 @@ export function SettingsDialog() {
             {section === 'account' && <Account />}
             {section === 'voice' && <VoiceSettings />}
             {section === 'notifications' && <Sounds />}
+            {section === 'app' && <AppBehaviour />}
             {section === 'channels' && isAdmin && <Channels />}
             {section === 'members' && isAdmin && <Members />}
           </div>
@@ -123,6 +126,20 @@ function Sounds() {
     <>
       <Heading>Sons</Heading>
       <Toggle label="Sons de entrar, sair e silenciar" checked={sounds} onChange={(v) => update({ sounds: v })} />
+    </>
+  );
+}
+
+/** PLAN fase 9D: the tray and starting with Windows. */
+function AppBehaviour() {
+  const { closeToTray, startWithWindows, update } = useSettings(
+    useShallow((s) => ({ closeToTray: s.closeToTray, startWithWindows: s.startWithWindows, update: s.update })),
+  );
+  return (
+    <>
+      <Heading>Aplicativo</Heading>
+      <Toggle label="Iniciar com o Windows" checked={startWithWindows} onChange={(v) => update({ startWithWindows: v })} />
+      <Toggle label="Manter na bandeja ao fechar" checked={closeToTray} onChange={(v) => update({ closeToTray: v })} />
     </>
   );
 }

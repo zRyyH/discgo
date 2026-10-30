@@ -5,6 +5,11 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import {
+  disable as disableAutostart,
+  enable as enableAutostart,
+  isEnabled as isAutostartEnabled,
+} from '@tauri-apps/plugin-autostart';
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { load, type Store } from '@tauri-apps/plugin-store';
 import type { EngineCommand, EngineEvent } from './engine';
@@ -17,7 +22,10 @@ const noop = async () => {};
 export const windowControls = {
   minimize: () => win?.minimize() ?? noop(),
   toggleMaximize: () => win?.toggleMaximize() ?? noop(),
+  /** Hides to the tray unless that is turned off in Settings (PLAN fase 9D). */
   close: () => win?.close() ?? noop(),
+  hide: () => win?.hide() ?? noop(),
+  isVisible: () => win?.isVisible() ?? Promise.resolve(true),
   isMaximized: () => win?.isMaximized() ?? Promise.resolve(false),
   onResized: (cb: () => void) => win?.onResized(cb) ?? Promise.resolve(() => {}),
 };
@@ -84,3 +92,21 @@ export const engine = {
 };
 
 export const keepDisplayOn = (on: boolean) => (inTauri ? invoke<void>('power_keep_display', { on }) : Promise.resolve());
+
+// --- tray and start with Windows (PLAN fase 9D) ---
+
+export type TrayIconState = 'idle' | 'voice' | 'speaking' | 'muted';
+
+export const tray = {
+  setState: (state: TrayIconState, tooltip: string, mute: boolean, deaf: boolean) =>
+    inTauri ? invoke<void>('tray_set_state', { state, tooltip, mute, deaf }) : Promise.resolve(),
+  setCloseToTray: (enabled: boolean) => (inTauri ? invoke<void>('tray_close_to_tray', { enabled }) : Promise.resolve()),
+  /** The tray menu's "Silenciar" / "Ensurdecer". */
+  onToggle: (which: 'mute' | 'deaf', cb: () => void) =>
+    inTauri ? listen(`tray://toggle-${which}`, () => cb()) : Promise.resolve(() => {}),
+};
+
+export const autostart = {
+  isEnabled: () => (inTauri ? isAutostartEnabled() : Promise.resolve(false)),
+  set: (on: boolean) => (!inTauri ? Promise.resolve() : on ? enableAutostart() : disableAutostart()),
+};

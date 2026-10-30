@@ -1,7 +1,7 @@
 // Transient UI state (not persisted).
 import { create } from 'zustand';
 
-type SettingsSection = 'account' | 'voice' | 'notifications' | 'channels' | 'members';
+type SettingsSection = 'account' | 'voice' | 'notifications' | 'app' | 'channels' | 'members';
 type View = 'chat' | 'call' | 'friends';
 
 interface UiState {

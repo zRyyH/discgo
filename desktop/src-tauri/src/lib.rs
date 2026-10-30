@@ -4,10 +4,15 @@
 mod engine;
 mod power;
 mod secrets;
+mod tray;
 mod webview;
 
-use tauri::Manager;
+use tauri::{Manager, WindowEvent};
 use tauri_plugin_opener::OpenerExt;
+use tauri_plugin_window_state::StateFlags;
+
+/// Passed by the "Iniciar com o Windows" entry: start hidden in the tray.
+const AUTOSTART_ARG: &str = "--autostart";
 
 #[tauri::command]
 fn app_version(app: tauri::AppHandle) -> String {
@@ -28,23 +33,38 @@ fn open_external(app: tauri::AppHandle, url: String) -> Result<(), String> {
 
 pub fn run() {
     tauri::Builder::default()
-        // Must be first: a second launch (e.g. the browser opening discgo://auth?code=…)
-        // hands its URL to the running instance and exits.
+        // Must be first: a second launch (e.g. the browser opening discgo://auth?code=…,
+        // or the Start menu while the window is in the tray) hands over and exits.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            if let Some(w) = app.get_webview_window("main") {
-                let _ = w.unminimize();
-                let _ = w.set_focus();
-            }
+            tray::show_main(app);
         }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .manage(engine::EngineState::default())
         .plugin(tauri_plugin_store::Builder::new().build())
-        .plugin(tauri_plugin_window_state::Builder::new().build())
+        // Visibility is ours (tray, autostart), not a restored state.
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_state_flags(StateFlags::all() & !StateFlags::VISIBLE)
+                .build(),
+        )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![AUTOSTART_ARG]),
+        ))
         .on_permission_request(webview::on_permission_request)
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event
+                && window.label() == "main"
+                && tray::closes_to_tray(window.app_handle())
+            {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .setup(|app| {
             // Installed builds get the scheme from the installer; dev builds register it here.
             #[cfg(debug_assertions)]
@@ -54,7 +74,11 @@ pub fn run() {
                     log::warn!("deep link registration failed: {e}");
                 }
             }
-            let _ = app;
+            tray::setup(app.handle())?;
+            // The window starts hidden (tauri.conf.json) so a login start stays in the tray.
+            if !std::env::args().any(|a| a == AUTOSTART_ARG) {
+                tray::show_main(app.handle());
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -67,6 +91,8 @@ pub fn run() {
             engine::engine_send,
             engine::engine_stop,
             power::power_keep_display,
+            tray::tray_set_state,
+            tray::tray_close_to_tray,
         ])
         .run(tauri::generate_context!())
         .expect("error while running DiscGo");

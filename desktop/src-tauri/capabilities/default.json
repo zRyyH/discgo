@@ -19,6 +19,12 @@
     "core:window:allow-set-focus",
     "core:window:allow-unmaximize",
     "updater:default",
-    "process:allow-restart"
+    "process:allow-restart",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-is-visible",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled"
   ]
 }

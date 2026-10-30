@@ -11,6 +11,9 @@ export interface Settings {
   videoDeviceId: string;
   highQualityVoice: boolean;
   userVolumes: Record<string, number>;
+  /** PLAN fase 9D: the window's X hides it in the tray. */
+  closeToTray: boolean;
+  startWithWindows: boolean;
 }
 
 const defaults: Settings = {
@@ -22,6 +25,8 @@ const defaults: Settings = {
   videoDeviceId: '',
   highQualityVoice: false,
   userVolumes: {},
+  closeToTray: true,
+  startWithWindows: true,
 };
 
 interface SettingsState extends Settings {

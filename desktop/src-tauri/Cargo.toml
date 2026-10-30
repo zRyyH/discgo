@@ -13,7 +13,7 @@ crate-type = ["rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 serde.workspace = true
 serde_json.workspace = true
 log.workspace = true
@@ -27,3 +27,4 @@ tauri-plugin-shell = "2.6.0"
 windows = { version = "0.62", features = ["Win32_System_Power"] }
 tauri-plugin-updater = "2.14.1"
 tauri-plugin-process = "2.4.0"
+tauri-plugin-autostart = "2"
