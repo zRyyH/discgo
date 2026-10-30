@@ -18,9 +18,16 @@ api/bin/
 # Env and secrets
 .env
 deploy/.env
+deploy/.env.*
+!deploy/.env.example
 deploy/livekit/livekit.yaml
 *.pem
 *.key
+# SSH private key of the Magalu VM (kept here by the user; never commit it)
+/Magalu
+
+# Claude Code local permissions
+.claude/settings.local.json
 
 # Editors / OS
 .vscode/*
