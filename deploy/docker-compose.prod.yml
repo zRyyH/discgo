@@ -1,6 +1,8 @@
-# Production (PLAN 9): one VM, everything in containers. nginx and LiveKit use the
-# host network (TLS on 443, WebRTC on 7881/tcp + 7882/udp, TURN on 3478/udp +
-# 5349/tcp); the API and PostgreSQL only listen on localhost.
+# Production (PLAN 9, fase 10.4): one VM, everything in containers. nginx and LiveKit use
+# the host network (TLS on 443, WebRTC on 7881/tcp + 7882/udp, TURN on 3478/udp +
+# 5349/tcp); the API and PostgreSQL only listen on localhost. nginx also fronts the
+# development API (docker-compose.dev-env.yml, api-dev.DOMAIN) and serves the desktop
+# releases that CI copies to /opt/discgo-releases.
 #
 #   cp deploy/.env.example deploy/.env  (and fill it)
 #   cp deploy/livekit/livekit.yaml.example deploy/livekit/livekit.yaml  (and fill it)
@@ -12,14 +14,19 @@ services:
     image: nginx:1.29-alpine
     network_mode: host
     restart: unless-stopped
-    # Reload every 6 h so renewed certificates are picked up.
-    command: ["/bin/sh", "-c", "(while :; do sleep 6h; nginx -s reload; done) & exec nginx -g \"daemon off;\""]
+    # Reload every 6 h so renewed certificates are picked up. The image's entrypoint renders
+    # the templates only when its first argument is `nginx`, hence the explicit call.
+    command: ["/bin/sh", "-c", "(while :; do sleep 6h; nginx -s reload; done) & exec /docker-entrypoint.sh nginx -g 'daemon off;'"]
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in deploy/.env}
+      # Hash of nginx/templates (deploy.sh): a change recreates the container, which is
+      # when the templates are rendered.
+      NGINX_CONF_HASH: ${NGINX_CONF_HASH:-}
     volumes:
       - ./nginx/templates:/etc/nginx/templates:ro
       - certbot-www:/var/www/certbot:ro
       - letsencrypt:/etc/letsencrypt:ro
+      - ${RELEASES_DIR:-/opt/discgo-releases}:/var/www/releases:ro
     depends_on:
       - api
 
@@ -53,6 +60,10 @@ services:
       DATABASE_URL: postgres://discgo:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/discgo?sslmode=disable
     ports:
       - "127.0.0.1:8080:8080"
+    # The VM cannot reach its own public IP (no hairpin NAT on Magalu): api.DOMAIN, where
+    # RELEASES_URL points, goes straight to nginx on the host.
+    extra_hosts:
+      - api.${DOMAIN}:host-gateway
     depends_on:
       postgres:
         condition: service_healthy
@@ -82,9 +93,9 @@ services:
       PGUSER: discgo
       PGPASSWORD: ${POSTGRES_PASSWORD}
       PGDATABASE: discgo
-      BACKUP_S3_URI: ${BACKUP_S3_URI:?set BACKUP_S3_URI, e.g. s3://discgo-backups/db}
+      BACKUP_S3_URI: ${BACKUP_S3_URI:?set BACKUP_S3_URI, e.g. s3://discgo/db}
       BACKUP_AT: ${BACKUP_AT:-03:30}
-      AWS_REGION: ${S3_REGION:-sa-east-1}
+      AWS_REGION: ${S3_REGION:-us-east-1}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
     depends_on:
