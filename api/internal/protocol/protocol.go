@@ -104,6 +104,13 @@ type Community struct {
 	Name string `json:"name"`
 }
 
+// AppUpdate tells an older app that a new version is published (PLAN fase 9A).
+// The app downloads it through its own signed updater; this is only the trigger.
+type AppUpdate struct {
+	Version string `json:"version"`
+	Notes   string `json:"notes"`
+}
+
 type Ready struct {
 	User         Me            `json:"user"`
 	Community    Community     `json:"community"`
@@ -139,7 +146,9 @@ const (
 	// A friend or request was added or changed type; sent only to the two users.
 	OpRelationshipAdd    = "relationship_add"
 	OpRelationshipRemove = "relationship_remove"
-	OpError              = "error"
+	// Sent to connections whose client version is older than the published one.
+	OpAppUpdate = "app_update"
+	OpError     = "error"
 )
 
 // Gateway ops, client -> server.

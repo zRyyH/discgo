@@ -74,7 +74,7 @@
         "https://discgo-releases.s3.sa-east-1.amazonaws.com/releases/latest.json"
       ],
       "windows": {
-        "installMode": "passive"
+        "installMode": "quiet"
       }
     }
   }

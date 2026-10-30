@@ -2,10 +2,10 @@
 import { gateway } from '../api/gateway';
 import { onRtcSignal, startCallController } from '../media/call';
 import { startScreenController } from '../media/ScreenShare';
-import { startUpdateChecks } from './updates';
+import { resumeAfterUpdate, startUpdateChecks, takeResume } from './updates';
 import { play } from '../lib/sounds';
 import type { ServerEvent } from '../shared/protocol';
-import { onDeepLink } from '../shared/shell';
+import { appVersion, onDeepLink } from '../shared/shell';
 import { useCommunity } from '../stores/community';
 import { useFriends } from '../stores/friends';
 import { useMessages } from '../stores/messages';
@@ -19,6 +19,7 @@ export async function boot() {
   if (booted) return;
   booted = true;
 
+  gateway.version = await appVersion().catch(() => 'unknown');
   startCallController();
   startScreenController();
   startUpdateChecks();
@@ -41,7 +42,9 @@ export async function boot() {
   }).catch(() => {});
 
   await useSettings.getState().load();
+  const resume = await takeResume();
   await useSession.getState().init();
+  if (resume) resumeAfterUpdate(resume, useSession.getState().status === 'signed_in');
 
   // Dev only: `?dev_email=` logs in without Google (API with AUTH_DEV=true), for scripted checks.
   const devEmail = import.meta.env.DEV ? new URLSearchParams(location.search).get('dev_email') : null;

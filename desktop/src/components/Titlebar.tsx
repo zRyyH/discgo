@@ -61,19 +61,19 @@ function TitlebarButton(props: {
   );
 }
 
+/** Only after a forced update failed (PLAN fase 9A); it retries by itself in 5 min too. */
 function UpdateButton() {
-  const { available, installing, error, install } = useUpdate();
-  if (!available) return null;
+  const { phase, version, error, retry } = useUpdate();
+  if (phase !== 'failed') return null;
   return (
     <button
       type="button"
-      onClick={() => void install()}
-      disabled={installing}
-      title={error ?? `Versão ${available.version}`}
-      className="mr-2 flex h-6 items-center gap-1.5 rounded-sm bg-ok/15 px-2 text-meta font-semibold text-ok hover:bg-ok/25 disabled:opacity-60"
+      onClick={retry}
+      title={error ?? undefined}
+      className="mr-2 flex h-6 animate-[pop_180ms_ease-out] items-center gap-1.5 rounded-sm bg-ok/15 px-2 text-meta font-semibold text-ok transition-colors duration-150 hover:bg-ok/25"
     >
       <Download size={13} strokeWidth={2} />
-      {installing ? 'Atualizando…' : 'Atualizar e reiniciar'}
+      Atualizar para {version}
     </button>
   );
 }

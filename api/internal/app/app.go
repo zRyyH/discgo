@@ -16,6 +16,7 @@ import (
 	"discgo/api/internal/httpapi"
 	"discgo/api/internal/livekit"
 	"discgo/api/internal/protocol"
+	"discgo/api/internal/releases"
 	"discgo/api/internal/storage"
 	"discgo/api/internal/voice"
 )
@@ -24,6 +25,8 @@ type App struct {
 	Handler http.Handler
 	Pool    *pgxpool.Pool
 	Voice   *voice.Manager
+	// nil when RELEASES_URL is unset.
+	Releases *releases.Watcher
 }
 
 // Overrides replace dependencies in tests.
@@ -67,6 +70,12 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, o Overrides) 
 	}, hub)
 	hub.Voice = voiceMgr
 
+	var watcher *releases.Watcher
+	if cfg.ReleasesURL != "" {
+		watcher = &releases.Watcher{URL: cfg.ReleasesURL, Every: cfg.ReleasesPoll, Log: log, OnChange: hub.AppUpdate}
+		hub.Releases = watcher
+	}
+
 	store := o.Storage
 	if store == nil {
 		store = httpapi.NoStorage{}
@@ -99,7 +108,14 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, o Overrides) 
 		AuthRedirect:   cfg.AuthRedirect,
 		MaxUploadBytes: cfg.MaxUploadBytes,
 	}
-	return &App{Handler: api.Handler(), Pool: pool, Voice: voiceMgr}, nil
+	return &App{Handler: api.Handler(), Pool: pool, Voice: voiceMgr, Releases: watcher}, nil
+}
+
+// WatchReleases polls the updater manifest until ctx ends (no-op when unset).
+func (a *App) WatchReleases(ctx context.Context) {
+	if a.Releases != nil {
+		a.Releases.Run(ctx)
+	}
 }
 
 // CleanupSessions deletes expired sessions every few hours until ctx ends.

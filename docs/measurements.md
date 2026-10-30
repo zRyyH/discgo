@@ -188,3 +188,28 @@ unsigned releases: Authenticode signing is the mitigation, and a false positive 
 be reported at https://www.microsoft.com/wdsi/filesubmission. Still to do on real
 infrastructure: a clean Windows VM (install, login, voice, screen share) and an update
 from the S3 bucket over HTTPS.
+
+## Phase 9A — 2026-10-29 (dev-1, forced update during a call)
+
+Setup: local release builds 0.1.0 (installed) and 0.1.1 with the updater endpoint pointed
+at a local server (`--config` override, see README), the API with
+`RELEASES_URL=http://127.0.0.1:18090/latest.json RELEASES_POLL=5s`, the installed app in
+a P2P call in "Sala" with a browser participant (`participant.ps1 -Report`). Then
+`latest.json` was switched from 0.1.0 to 0.1.1, with no input on the app.
+
+| Step | Time |
+|---|---|
+| `latest.json` switched to 0.1.1 | 21:47:21.8 |
+| API sees it (5 s poll) and sends `app_update`; the app checks and starts the download | 21:47:26.0 |
+| Download (15.4 MiB, localhost) + 3 s countdown; the app stops the engine and exits | 21:47:32.3 (gateway closed, 1001) |
+| Silent installer (`/S /UPDATE /R`) done, 0.1.1 started | 21:47:35 |
+| 0.1.1 identifies (`version: "0.1.1"`) and is back in the call | 21:47:36.1 |
+
+Publish → back in the call: 14.3 s, of which 4.2 s waiting for the poll (60 s in
+production). The app was away from the gateway for 3.7 s, inside the 10 s voice grace,
+so the server kept its place and the same P2P session id; the participant's report never
+left `p2p/connected` and the pair reconnected (new `host ↔ host` candidate pair). The
+saved resume state was read and cleared on start. No Defender detection this time
+(install root `%LOCALAPPDATA%\DiscGo`, not `%TEMP%`). Not covered here: an update that
+takes longer than the 10 s grace (the app then rejoins from the saved resume state), two
+installed apps on two machines, and the S3/HTTPS path.

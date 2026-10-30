@@ -31,6 +31,7 @@ func TestContractFixtures(t *testing.T) {
 			Relationships: []Relationship{{User: User{ID: "0192f5d2-7c1e-7a10-9f00-0000000000b2", Username: "bruno", DisplayName: "Bruno", Role: "member"}, Type: "incoming", Since: edited}},
 		}),
 		"relationship_remove": NewFrame(OpRelationshipRemove, RelationshipRemove{UserID: "0192f5d2-7c1e-7a10-9f00-0000000000b2"}),
+		"app_update":          NewFrame(OpAppUpdate, AppUpdate{Version: "0.2.0", Notes: "Correções"}),
 		"message_create": NewFrame(OpMessageCreate, Message{
 			ID: "0192f5d2-7c1e-7a10-9f00-00000000m001", ChannelID: ch, AuthorID: "0192f5d2-7c1e-7a10-9f00-0000000000a1",
 			Content: "oi", CreatedAt: time.Date(2026, 10, 29, 18, 0, 0, 0, time.UTC), EditedAt: &edited,

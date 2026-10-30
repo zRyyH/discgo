@@ -34,9 +34,16 @@ type env struct {
 	t      *testing.T
 	srv    *httptest.Server
 	google *fakeGoogle
+	app    *app.App
 }
 
 func newEnv(t *testing.T) *env {
+	t.Helper()
+	return newEnvWith(t, func(*config.Config) {})
+}
+
+// newEnvWith lets a test change the configuration before the API starts.
+func newEnvWith(t *testing.T, configure func(*config.Config)) *env {
 	t.Helper()
 	base := os.Getenv("TEST_DATABASE_URL")
 	if base == "" {
@@ -85,17 +92,21 @@ func newEnv(t *testing.T) *env {
 		handler.ServeHTTP(w, r)
 	}))
 	cfg.PublicURL = "http://" + srv.Listener.Addr().String()
+	configure(&cfg)
 	a, err := app.New(ctx, cfg, log, app.Overrides{Storage: fakeStorage{}, VoiceGrace: 200 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}
 	handler = a.Handler
 	srv.Start()
+	bg, stop := context.WithCancel(ctx)
+	go a.WatchReleases(bg)
 	t.Cleanup(func() {
+		stop()
 		srv.Close()
 		a.Pool.Close()
 	})
-	return &env{t: t, srv: srv, google: google}
+	return &env{t: t, srv: srv, google: google, app: a}
 }
 
 type fakeStorage struct{}
@@ -193,6 +204,12 @@ type ws struct {
 
 func (c *client) connect(p2p bool) *ws {
 	c.e.t.Helper()
+	return c.connectAs(p2p, "test")
+}
+
+// connectAs identifies with a given client app version.
+func (c *client) connectAs(p2p bool, version string) *ws {
+	c.e.t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(c.e.srv.URL, "http")+"/v1/gateway", nil)
@@ -203,7 +220,7 @@ func (c *client) connect(p2p bool) *ws {
 	w := &ws{t: c.e.t, conn: conn, frames: make(chan protocol.Frame, 256)}
 	c.e.t.Cleanup(func() { conn.Close(websocket.StatusNormalClosure, "") })
 	ident := protocol.Identify{Token: c.token}
-	ident.Client.Version = "test"
+	ident.Client.Version = version
 	ident.Client.P2P = p2p
 	w.send(protocol.OpIdentify, ident)
 	go func() {

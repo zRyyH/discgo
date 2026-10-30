@@ -87,6 +87,12 @@ export interface Ready {
   relationships: Relationship[];
 }
 
+/** A newer app version is published (PLAN fase 9A); the signed updater does the rest. */
+export interface AppUpdate {
+  version: string;
+  notes: string;
+}
+
 export type ServerEvent =
   | { op: 'ready'; d: Ready }
   | { op: 'message_create' | 'message_update'; d: Message }
@@ -101,6 +107,7 @@ export type ServerEvent =
   | { op: 'rtc_signal'; d: RtcSignal }
   | { op: 'relationship_add'; d: Relationship }
   | { op: 'relationship_remove'; d: { user_id: string } }
+  | { op: 'app_update'; d: AppUpdate }
   | { op: 'pong'; d: unknown }
   | { op: 'error'; d: { code: string; message: string } };
 

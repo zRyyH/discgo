@@ -1,0 +1,7 @@
+{
+  "op": "app_update",
+  "d": {
+    "version": "0.2.0",
+    "notes": "Correções"
+  }
+}

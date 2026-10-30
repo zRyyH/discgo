@@ -58,6 +58,10 @@ export const settings = {
     if (!inTauri) return sessionStorage.setItem('discgo.' + key, JSON.stringify(value));
     await (await settings.store()).set(key, value);
   },
+  /** Writes pending changes now (autosave is debounced), e.g. right before the app exits. */
+  async flush() {
+    if (inTauri) await (await settings.store()).save();
+  },
 };
 
 // --- capture engine sidecar (PLAN 6.8) ---
@@ -66,7 +70,8 @@ export const engine = {
   available: inTauri,
   start: () => invoke<void>('engine_start'),
   send: (cmd: EngineCommand) => invoke<void>('engine_send', { line: JSON.stringify(cmd) }),
-  stop: () => invoke<void>('engine_stop'),
+  /** Resolves to whether the engine was running; `onExit` fires once it is gone. */
+  stop: () => invoke<boolean>('engine_stop'),
   onEvent: (cb: (e: EngineEvent) => void) =>
     listen<string>('engine://event', (e) => {
       try {

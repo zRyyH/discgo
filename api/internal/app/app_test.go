@@ -5,18 +5,86 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	lkauth "github.com/livekit/protocol/auth"
 
+	"discgo/api/internal/config"
 	"discgo/api/internal/protocol"
 )
+
+// Phase 9A: apps older than the published latest.json are told to update right
+// after ready and as soon as a newer version is published; dev builds never are.
+func TestAppUpdate(t *testing.T) {
+	var mu sync.Mutex
+	published := "0.1.0"
+	manifest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		v := published
+		mu.Unlock()
+		etag := `"` + v + `"`
+		if r.Header.Get("If-None-Match") == etag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("ETag", etag)
+		fmt.Fprintf(w, `{"version":%q,"notes":"Notas %s","platforms":{}}`, v, v)
+	}))
+	t.Cleanup(manifest.Close)
+	e := newEnvWith(t, func(c *config.Config) {
+		c.ReleasesURL = manifest.URL
+		c.ReleasesPoll = 50 * time.Millisecond
+	})
+	for deadline := time.Now().Add(3 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		if _, ok := e.app.Releases.Latest(); ok {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("manifest never read")
+		}
+	}
+
+	ana := e.mustLogin("ana@test")
+	old := ana.connectAs(true, "0.0.9")
+	var u protocol.AppUpdate
+	old.expect(protocol.OpAppUpdate, &u)
+	if u.Version != "0.1.0" || u.Notes != "Notas 0.1.0" {
+		t.Fatalf("app_update after ready: %+v", u)
+	}
+	current := ana.connectAs(true, "0.1.0")
+	dev := ana.connectAs(true, "dev-browser")
+
+	mu.Lock()
+	published = "0.2.0"
+	mu.Unlock()
+	old.expect(protocol.OpAppUpdate, &u)
+	if u.Version != "0.2.0" {
+		t.Fatalf("old app: %+v", u)
+	}
+	// The first app_update the current app sees is the new version, not 0.1.0.
+	current.expect(protocol.OpAppUpdate, &u)
+	if u.Version != "0.2.0" {
+		t.Fatalf("current app: %+v", u)
+	}
+	dev.send(protocol.OpPing, 1)
+	for f := range dev.frames {
+		if f.Op == protocol.OpAppUpdate {
+			t.Fatal("dev build was told to update")
+		}
+		if f.Op == protocol.OpPong {
+			break
+		}
+	}
+}
 
 // Phase 2 acceptance: first user is admin, anyone else signs up on the first
 // login, sessions persist.

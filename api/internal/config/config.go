@@ -41,6 +41,10 @@ type Config struct {
 	S3Endpoint     string // non-empty for MinIO in dev
 	S3CreateBucket bool
 	MaxUploadBytes int64
+
+	// The desktop updater manifest (latest.json); empty disables forced updates.
+	ReleasesURL  string
+	ReleasesPoll time.Duration
 }
 
 func Load() (Config, error) {
@@ -64,6 +68,8 @@ func Load() (Config, error) {
 		S3Region:   env("S3_REGION", "sa-east-1"),
 		S3Bucket:   env("S3_BUCKET", ""),
 		S3Endpoint: env("S3_ENDPOINT", ""),
+
+		ReleasesURL: env("RELEASES_URL", ""),
 	}
 	if c.DatabaseURL == "" {
 		errs = append(errs, "DATABASE_URL is required")
@@ -74,6 +80,7 @@ func Load() (Config, error) {
 	c.SessionTTL = duration("SESSION_TTL", 30*24*time.Hour, &errs)
 	c.P2PSwitchDelay = duration("P2P_SWITCH_DELAY", 10*time.Second, &errs)
 	c.P2PBlockTTL = duration("P2P_BLOCK_TTL", time.Hour, &errs)
+	c.ReleasesPoll = duration("RELEASES_POLL", time.Minute, &errs)
 	c.AuthDev = boolean("AUTH_DEV", false, &errs)
 	c.S3CreateBucket = boolean("S3_CREATE_BUCKET", false, &errs)
 	c.P2PMaxParticipants = integer("P2P_MAX_PARTICIPANTS", 2, &errs)

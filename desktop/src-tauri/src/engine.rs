@@ -66,16 +66,19 @@ pub fn engine_send<R: Runtime>(app: AppHandle<R>, line: String) -> Result<(), St
     child.write(&bytes).map_err(|e| e.to_string())
 }
 
-/// Asks the engine to exit; it tears its pipeline down on `shutdown`.
+/// Asks the engine to exit; it tears its pipeline down on `shutdown`. Returns
+/// whether it was running (`engine://exit` follows when it was).
 #[tauri::command]
-pub fn engine_stop<R: Runtime>(app: AppHandle<R>) {
+pub fn engine_stop<R: Runtime>(app: AppHandle<R>) -> bool {
     let state = app.state::<EngineState>();
-    if let Some(mut child) = state.0.lock().unwrap().take() {
-        let _ = child.write(b"{\"cmd\":\"shutdown\"}\n");
-        // Give it a moment to release the capture, then make sure it is gone.
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_secs(3));
-            let _ = child.kill();
-        });
-    }
+    let Some(mut child) = state.0.lock().unwrap().take() else {
+        return false;
+    };
+    let _ = child.write(b"{\"cmd\":\"shutdown\"}\n");
+    // Give it a moment to release the capture, then make sure it is gone.
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        let _ = child.kill();
+    });
+    true
 }

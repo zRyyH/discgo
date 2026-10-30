@@ -20,6 +20,7 @@ import (
 	"discgo/api/internal/auth"
 	"discgo/api/internal/db"
 	"discgo/api/internal/protocol"
+	"discgo/api/internal/releases"
 	"discgo/api/internal/voice"
 )
 
@@ -37,6 +38,10 @@ type Hub struct {
 	Queries   *db.Queries
 	Voice     *voice.Manager
 	Community string
+	// The published desktop version (PLAN fase 9A); nil when RELEASES_URL is unset.
+	Releases interface {
+		Latest() (protocol.AppUpdate, bool)
+	}
 
 	nextID atomic.Uint64
 	mu     sync.RWMutex
@@ -45,11 +50,12 @@ type Hub struct {
 }
 
 type conn struct {
-	id     uint64
-	userID uuid.UUID
-	p2p    bool
-	send   chan []byte
-	cancel context.CancelFunc
+	id      uint64
+	userID  uuid.UUID
+	p2p     bool
+	version string // client app version from identify
+	send    chan []byte
+	cancel  context.CancelFunc
 }
 
 func NewHub(log *slog.Logger, pool *pgxpool.Pool, a *auth.Service, community string) *Hub {
@@ -80,6 +86,18 @@ func (h *Hub) SendToUser(userID uuid.UUID, op string, d any) {
 	defer h.mu.RUnlock()
 	for _, c := range h.byUser[userID] {
 		h.trySend(c, msg)
+	}
+}
+
+// AppUpdate tells every connection running an older app version to update.
+func (h *Hub) AppUpdate(rel protocol.AppUpdate) {
+	msg := encode(protocol.OpAppUpdate, rel)
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, c := range h.conns {
+		if releases.Older(c.version, rel.Version) {
+			h.trySend(c, msg)
+		}
 	}
 }
 
@@ -134,7 +152,10 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ws.Close(websocket.StatusPolicyViolation, err.Error())
 		return
 	}
-	c := &conn{id: h.nextID.Add(1), userID: user.ID, p2p: ident.Client.P2P, send: make(chan []byte, sendBuffer), cancel: cancel}
+	c := &conn{
+		id: h.nextID.Add(1), userID: user.ID, p2p: ident.Client.P2P, version: ident.Client.Version,
+		send: make(chan []byte, sendBuffer), cancel: cancel,
+	}
 	ready, err := h.ready(ctx, user)
 	if err != nil {
 		h.Log.Error("gateway: ready", "err", err)
@@ -143,6 +164,11 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	// ready is queued before registering so it is always the first frame.
 	c.send <- encode(protocol.OpReady, ready)
+	if h.Releases != nil {
+		if rel, ok := h.Releases.Latest(); ok && releases.Older(c.version, rel.Version) {
+			c.send <- encode(protocol.OpAppUpdate, rel)
+		}
+	}
 	if first := h.register(c); first {
 		h.Broadcast(protocol.OpPresenceUpdate, protocol.PresenceUpdate{UserID: user.ID.String(), Status: "online"})
 	}

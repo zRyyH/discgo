@@ -101,8 +101,21 @@ A tag `vX.Y.Z` (equal to `desktop/src-tauri/tauri.conf.json` `version`) runs
 installs GStreamer, builds the engine and its runtime, builds the NSIS installer
 (per-user install, WebView2 bootstrapper), signs the update with minisign and uploads
 `DiscGo_X.Y.Z_x64-setup.exe` + `latest.json` to `s3://$RELEASES_BUCKET/releases/`.
-Installed apps check `latest.json` at start and every 6 h and offer "Atualizar e
-reiniciar" in the titlebar.
+Updates are forced (PLAN fase 9A): the API polls `RELEASES_URL` (that `latest.json`)
+every minute and sends `app_update` over the gateway to every app older than it, and the
+apps also check at start and every 6 h. The app downloads the package (minisign-checked),
+shows a 3 s countdown, the silent installer restarts it, and it goes back to the voice
+channel the user was in. The titlebar button only appears if that fails.
+
+Order for a release: deploy the API first (it must keep working with the previous app
+version), bump `version` in `desktop/src-tauri/tauri.conf.json`, tag. The CI uploads
+`latest.json` last, so apps are only told once the installer is there.
+
+Testing it locally without S3: build with
+`pnpm tauri build --config '{"version":"0.1.1","plugins":{"updater":{"endpoints":["http://127.0.0.1:18090/latest.json"],"dangerousInsecureTransportProtocol":true}}}'`
+(and the same without `version` for the installed build), serve the installer, its `.sig`
+and a `latest.json` from that port, and run the API with
+`RELEASES_URL=http://127.0.0.1:18090/latest.json RELEASES_POLL=5s`.
 
 Repository secrets: `TAURI_SIGNING_PRIVATE_KEY` (contents of the private key),
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (empty for the current key), `AWS_ACCESS_KEY_ID`,

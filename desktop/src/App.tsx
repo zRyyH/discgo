@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import { boot } from './app/boot';
 import { Login } from './components/Login';
+import { Toaster, UpdateBanner } from './components/Notices';
 import { Titlebar } from './components/Titlebar';
 import { Workspace } from './components/Workspace';
 import { useCommunity } from './stores/community';
@@ -16,6 +17,8 @@ export function App() {
   return (
     <div className="flex h-full flex-col">
       <Titlebar title={name || 'DiscGo'} />
+      <UpdateBanner />
+      <Toaster />
       {status === 'signed_in' ? (
         <Workspace />
       ) : status === 'loading' ? (

@@ -6,7 +6,6 @@ import { API_URL } from './rest';
 export type GatewayStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting';
 
 const GATEWAY_URL = API_URL.replace(/^http/, 'ws') + '/v1/gateway';
-const CLIENT_VERSION = '0.1.0';
 // Close code the server uses for a bad/expired token.
 const POLICY_VIOLATION = 1008;
 const PING_EVERY_MS = 30_000;
@@ -25,6 +24,8 @@ class Gateway {
   private statusListeners = new Set<(s: GatewayStatus) => void>();
   private unauthorized: () => void = () => {};
   status: GatewayStatus = 'idle';
+  /** The app version sent in identify; the server compares it with the published one. */
+  version = 'unknown';
 
   connect(token: string) {
     this.token = token;
@@ -67,7 +68,7 @@ class Gateway {
     const ws = new WebSocket(GATEWAY_URL);
     this.ws = ws;
     ws.onopen = () => {
-      ws.send(JSON.stringify({ op: 'identify', d: { token: this.token, client: { version: CLIENT_VERSION, p2p: true } } }));
+      ws.send(JSON.stringify({ op: 'identify', d: { token: this.token, client: { version: this.version, p2p: true } } }));
     };
     ws.onmessage = (m) => {
       let ev: ServerEvent;

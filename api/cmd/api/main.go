@@ -41,6 +41,7 @@ func run() error {
 	}
 	defer a.Pool.Close()
 	go a.CleanupSessions(ctx, log)
+	go a.WatchReleases(ctx)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
