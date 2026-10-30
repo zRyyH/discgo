@@ -1,0 +1,44 @@
+# Lets the job reach the production VM as `ssh vm` / `scp ... vm:` (PLAN fase 10.2).
+# Linux runners only. The key is the CI's own (in the VM's authorized_keys).
+name: VM SSH
+description: Configure SSH access to the DiscGo VM
+
+inputs:
+  host:
+    description: VM address (secret VM_HOST)
+    required: true
+  user:
+    description: SSH user (secret VM_USER)
+    required: true
+  key:
+    description: Private key (secret VM_SSH_KEY)
+    required: true
+  known-hosts:
+    description: Host keys of the VM, from `ssh-keyscan -H` (secret VM_KNOWN_HOSTS)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: SSH config for the VM
+      shell: bash
+      env:
+        VM_HOST: ${{ inputs.host }}
+        VM_USER: ${{ inputs.user }}
+        VM_SSH_KEY: ${{ inputs.key }}
+        VM_KNOWN_HOSTS: ${{ inputs.known-hosts }}
+      run: |
+        install -d -m 700 ~/.ssh
+        printf '%s\n' "$VM_SSH_KEY" > ~/.ssh/vm
+        chmod 600 ~/.ssh/vm
+        printf '%s\n' "$VM_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+        cat >> ~/.ssh/config <<EOF
+        Host vm
+          HostName $VM_HOST
+          User $VM_USER
+          IdentityFile ~/.ssh/vm
+          IdentitiesOnly yes
+          StrictHostKeyChecking yes
+          ServerAliveInterval 30
+        EOF
+        chmod 600 ~/.ssh/config

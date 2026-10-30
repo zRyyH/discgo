@@ -1,0 +1,126 @@
+# Builds the Windows installer (PLAN 8, fase 10.2): the engine and its GStreamer runtime,
+# the NSIS installer signed for the updater (minisign) and its latest.json, uploaded as
+# the artifact `installer`. Called by release.yml (production, on a tag) and deploy.yml
+# (the "DiscGo Dev" app of develop, PLAN fase 10.6).
+#
+# Secret TAURI_SIGNING_PRIVATE_KEY (the key has no password). The environment gives
+# VITE_API_URL, which is built into the app and is also where the release is served
+# (VITE_API_URL/releases).
+name: installer
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit, branch or tag to build
+        required: true
+        type: string
+      environment:
+        description: GitHub environment with VITE_API_URL (production or development)
+        required: true
+        type: string
+      tag:
+        description: Release tag; the build fails unless tauri.conf.json has its version
+        type: string
+        default: ''
+      config:
+        description: Tauri config overlay, relative to the repository
+        type: string
+        default: ''
+      patch:
+        description: Replaces the patch number of the version (the dev app counts runs)
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    environment: ${{ inputs.environment }}
+    env:
+      VITE_API_URL: ${{ vars.VITE_API_URL }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Tauri config overlay and version
+        shell: pwsh
+        env:
+          TAG: ${{ inputs.tag }}
+          CONFIG: ${{ inputs.config }}
+          PATCH: ${{ inputs.patch }}
+        run: |
+          if (-not $env:VITE_API_URL) { throw 'VITE_API_URL is not set in the environment' }
+          $version = (Get-Content desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ($env:TAG -and "v$version" -ne $env:TAG) { throw "tag $env:TAG != tauri.conf.json version $version" }
+          $overlay = if ($env:CONFIG) { Get-Content $env:CONFIG -Raw | ConvertFrom-Json -AsHashtable } else { @{} }
+          if ($env:PATCH) { $overlay.version = (($version -split '\.')[0..1] -join '.') + ".$env:PATCH" }
+          if ($overlay.Count) {
+            # One file for both `tauri build --config` and latest-json.mjs.
+            $file = "$env:RUNNER_TEMP\tauri.overlay.json"
+            $overlay | ConvertTo-Json -Depth 20 | Out-File -Encoding utf8NoBOM $file
+            Get-Content $file
+            "TAURI_OVERLAY=$file" >> $env:GITHUB_ENV
+          }
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: desktop/pnpm-lock.yaml
+      - uses: ./.github/actions/gstreamer
+
+      - name: Engine and GStreamer runtime
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          cargo build --release -p discgo-engine
+          Copy-Item target/release/discgo-engine.exe desktop/src-tauri/binaries/discgo-engine-x86_64-pc-windows-msvc.exe
+          ./engine/gst-runtime/collect.ps1
+          git diff --exit-code engine/gst-runtime/dlls.lock.txt
+
+      - name: Build and sign the installer
+        working-directory: desktop
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          pnpm install --frozen-lockfile
+          if ($env:TAURI_OVERLAY) { pnpm tauri build --config $env:TAURI_OVERLAY } else { pnpm tauri build }
+
+      - name: Size budget (90 MB)
+        shell: pwsh
+        run: |
+          $f = Get-Item target/release/bundle/nsis/*_x64-setup.exe
+          "installer: {0:N1} MB" -f ($f.Length / 1MB)
+          if ($f.Length -gt 90MB) { throw 'installer over 90 MB' }
+
+      - name: latest.json
+        shell: pwsh
+        env:
+          NOTES: ${{ inputs.tag || inputs.ref }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $cfg = if ($env:TAURI_OVERLAY) { @('--config', $env:TAURI_OVERLAY) } else { @() }
+          New-Item -ItemType Directory out | Out-Null
+          node desktop/scripts/latest-json.mjs "$env:VITE_API_URL/releases" $env:NOTES @cfg | Out-File -Encoding utf8NoBOM out/latest.json
+          Copy-Item target/release/bundle/nsis/*_x64-setup.exe, target/release/bundle/nsis/*_x64-setup.exe.sig out/
+          Get-Content out/latest.json
+          Get-ChildItem out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: out/
+          retention-days: 30
+          if-no-files-found: error

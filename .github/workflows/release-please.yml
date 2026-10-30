@@ -1,0 +1,47 @@
+# release-please (PLAN fase 10.2): on every push to main it keeps a release PR up to date
+# (version bump in tauri.conf.json, package.json and Cargo.toml, CHANGELOG.md) from the
+# Conventional Commits since the last release. Merging that PR tags vX.Y.Z and runs
+# release.yml here, since a tag created with GITHUB_TOKEN starts no workflow.
+# chore/docs/ci/refactor commits (Dependabot's chore(deps) too) do not make a release.
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+      # The release PR is opened with GITHUB_TOKEN, which starts no workflow: run the
+      # required `ci` check on its branch by hand.
+      - name: CI on the release PR
+        if: steps.release.outputs.pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
+
+  release:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+    secrets: inherit
