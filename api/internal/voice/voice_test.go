@@ -79,13 +79,13 @@ func TestModeRule(t *testing.T) {
 	ch := uuid.Must(uuid.NewV7())
 	u := ids(3)
 
-	m.Join(u[0], 1, ch, true, false, false)
+	m.Join(u[0], 1, ch, true, false, false, "")
 	if s := rec.last(t, u[0]); s.Mode != Idle {
 		t.Fatalf("alone: mode %q, want idle", s.Mode)
 	}
 
 	// Second participant: straight to p2p, no hysteresis from idle.
-	m.Join(u[1], 2, ch, true, false, false)
+	m.Join(u[1], 2, ch, true, false, false, "")
 	a, b := rec.last(t, u[0]), rec.last(t, u[1])
 	if a.Mode != P2P || b.Mode != P2P || a.SessionID != b.SessionID {
 		t.Fatalf("two: got %+v / %+v, want same p2p session", a, b)
@@ -98,7 +98,7 @@ func TestModeRule(t *testing.T) {
 	}
 
 	// Third: sfu immediately for everyone.
-	m.Join(u[2], 3, ch, true, false, false)
+	m.Join(u[2], 3, ch, true, false, false, "")
 	for _, id := range u {
 		if s := rec.last(t, id); s.Mode != SFU || s.LiveKitURL != "wss://lk" {
 			t.Fatalf("three: %s got %+v, want sfu", id, s)
@@ -129,10 +129,10 @@ func TestSwitchCancelledWhenMembershipChanges(t *testing.T) {
 	ch := uuid.Must(uuid.NewV7())
 	u := ids(3)
 	for i, id := range u {
-		m.Join(id, uint64(i+1), ch, true, false, false)
+		m.Join(id, uint64(i+1), ch, true, false, false, "")
 	}
 	m.Leave(u[2])
-	m.Join(u[2], 3, ch, true, false, false) // back to three before the delay
+	m.Join(u[2], 3, ch, true, false, false, "") // back to three before the delay
 	time.Sleep(200 * time.Millisecond)
 	for _, id := range u {
 		if s := rec.last(t, id); s.Mode != SFU {
@@ -146,8 +146,8 @@ func TestP2PFailedBlocksPair(t *testing.T) {
 	m := newManager(rec)
 	ch := uuid.Must(uuid.NewV7())
 	u := ids(2)
-	m.Join(u[0], 1, ch, true, false, false)
-	m.Join(u[1], 2, ch, true, false, false)
+	m.Join(u[0], 1, ch, true, false, false, "")
+	m.Join(u[1], 2, ch, true, false, false, "")
 	p2p := rec.last(t, u[0])
 
 	m.P2PFailed(u[1], "stale-session") // ignored
@@ -161,7 +161,7 @@ func TestP2PFailedBlocksPair(t *testing.T) {
 
 	// Blocked for BlockTTL: rejoining does not bring p2p back.
 	m.Leave(u[1])
-	m.Join(u[1], 2, ch, true, false, false)
+	m.Join(u[1], 2, ch, true, false, false, "")
 	time.Sleep(150 * time.Millisecond)
 	if s := rec.last(t, u[0]); s.Mode != SFU {
 		t.Fatalf("blocked pair went p2p: %+v", s)
@@ -173,8 +173,8 @@ func TestP2PFailedIgnoredWhenPeerIsGone(t *testing.T) {
 	m := newManager(rec)
 	ch := uuid.Must(uuid.NewV7())
 	u := ids(2)
-	m.Join(u[0], 1, ch, true, false, false)
-	m.Join(u[1], 2, ch, true, false, false)
+	m.Join(u[0], 1, ch, true, false, false, "")
+	m.Join(u[1], 2, ch, true, false, false, "")
 	p2p := rec.last(t, u[0])
 
 	// u[1]'s app died: its gateway connection closed, then u[0]'s ICE gives up.
@@ -184,7 +184,7 @@ func TestP2PFailedIgnoredWhenPeerIsGone(t *testing.T) {
 		t.Fatalf("switched to %s because the peer left", s.Mode)
 	}
 	// It comes back within the grace period: still p2p, nothing blocked.
-	m.Join(u[1], 3, ch, true, false, false)
+	m.Join(u[1], 3, ch, true, false, false, "")
 	if s := rec.last(t, u[1]); s.Mode != P2P {
 		t.Fatalf("rejoin got %+v", s)
 	}
@@ -195,8 +195,8 @@ func TestNotP2PCapableUsesSFU(t *testing.T) {
 	m := newManager(rec)
 	ch := uuid.Must(uuid.NewV7())
 	u := ids(2)
-	m.Join(u[0], 1, ch, true, false, false)
-	m.Join(u[1], 2, ch, false, false, false)
+	m.Join(u[0], 1, ch, true, false, false, "")
+	m.Join(u[1], 2, ch, false, false, false, "")
 	if s := rec.last(t, u[0]); s.Mode != SFU {
 		t.Fatalf("got %+v, want sfu", s)
 	}
@@ -207,8 +207,8 @@ func TestRelayTarget(t *testing.T) {
 	m := newManager(rec)
 	ch := uuid.Must(uuid.NewV7())
 	u := ids(3)
-	m.Join(u[0], 10, ch, true, false, false)
-	m.Join(u[1], 20, ch, true, false, false)
+	m.Join(u[0], 10, ch, true, false, false, "")
+	m.Join(u[1], 20, ch, true, false, false, "")
 	sid := rec.last(t, u[0]).SessionID
 	if conn, ok := m.RelayTarget(u[0], u[1], sid); !ok || conn != 20 {
 		t.Fatalf("relay = %d, %v", conn, ok)
@@ -216,7 +216,7 @@ func TestRelayTarget(t *testing.T) {
 	if _, ok := m.RelayTarget(u[0], u[1], "other"); ok {
 		t.Fatal("relay accepted a wrong session id")
 	}
-	m.Join(u[2], 30, ch, true, false, false)
+	m.Join(u[2], 30, ch, true, false, false, "")
 	if _, ok := m.RelayTarget(u[0], u[1], rec.last(t, u[0]).SessionID); ok {
 		t.Fatal("relay accepted in sfu mode")
 	}
@@ -227,15 +227,15 @@ func TestGraceAndRejoin(t *testing.T) {
 	m := newManager(rec)
 	ch := uuid.Must(uuid.NewV7())
 	u := ids(2)
-	m.Join(u[0], 1, ch, true, false, false)
-	m.Join(u[1], 2, ch, true, false, false)
+	m.Join(u[0], 1, ch, true, false, false, "")
+	m.Join(u[1], 2, ch, true, false, false, "")
 	sid := rec.last(t, u[0]).SessionID
 
-	// Reconnect within the grace period keeps the session.
+	// Reconnect within the grace period, media still up: same session, peer untouched.
 	m.ConnClosed(u[1], 2)
-	before := rec.count(u[1])
-	m.Join(u[1], 3, ch, true, false, false)
-	if rec.count(u[1]) != before+1 || rec.last(t, u[1]).SessionID != sid {
+	before, peerBefore := rec.count(u[1]), rec.count(u[0])
+	m.Join(u[1], 3, ch, true, false, false, sid)
+	if rec.count(u[1]) != before+1 || rec.last(t, u[1]).SessionID != sid || rec.count(u[0]) != peerBefore {
 		t.Fatal("rejoin did not resend the current session")
 	}
 	time.Sleep(100 * time.Millisecond)
@@ -243,8 +243,16 @@ func TestGraceAndRejoin(t *testing.T) {
 		t.Fatal("user removed although it reconnected")
 	}
 
-	// No reconnect: removed after the grace period.
+	// The app restarted (an update): no media left, so both get a new p2p session.
 	m.ConnClosed(u[1], 3)
+	m.Join(u[1], 4, ch, true, false, false, "")
+	a, b := rec.last(t, u[0]), rec.last(t, u[1])
+	if a.Mode != P2P || a.SessionID == sid || b.SessionID != a.SessionID {
+		t.Fatalf("restart rejoin: peer %+v, restarted %+v", a, b)
+	}
+
+	// No reconnect: removed after the grace period.
+	m.ConnClosed(u[1], 4)
 	eventually(t, "removal after grace", func() bool {
 		_, _, ok := m.Current(u[1])
 		return !ok
@@ -260,7 +268,7 @@ func TestSFUWebhookRemovesStaleParticipant(t *testing.T) {
 	ch := uuid.Must(uuid.NewV7())
 	u := ids(3)
 	for i, id := range u {
-		m.Join(id, uint64(i+1), ch, true, false, false)
+		m.Join(id, uint64(i+1), ch, true, false, false, "")
 	}
 	// u[2] drops out of LiveKit and comes back: stays.
 	m.SFULeft(u[2], ch)

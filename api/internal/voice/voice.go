@@ -100,8 +100,10 @@ func New(cfg Config, out Notifier) *Manager {
 }
 
 // Join puts the user in channelID (leaving any other voice channel). Joining the
-// channel the user is already in rebinds it to connID, e.g. after a reconnect.
-func (m *Manager) Join(userID uuid.UUID, connID uint64, channelID uuid.UUID, p2p, mute, deaf bool) {
+// channel the user is already in rebinds it to connID, e.g. after a reconnect;
+// haveSession is the session the client still has media for ("" after an app
+// start).
+func (m *Manager) Join(userID uuid.UUID, connID uint64, channelID uuid.UUID, p2p, mute, deaf bool, haveSession string) {
 	m.mu.Lock()
 	o := &outbox{}
 	if p, ok := m.users[userID]; ok {
@@ -112,7 +114,13 @@ func (m *Manager) Join(userID uuid.UUID, connID uint64, channelID uuid.UUID, p2p
 				p.mute, p.deaf = mute, deaf
 				o.states = append(o.states, p.state())
 			}
-			m.sendSession(o, m.rooms[channelID], p)
+			if r := m.rooms[channelID]; r.mode == P2P && haveSession != r.sessionID {
+				// A restarted app (an update, a crash) has no peer connection left and
+				// the peer would wait on a dead one: both start over on a new session.
+				m.switchMode(channelID, r, P2P, o)
+			} else {
+				m.sendSession(o, r, p)
+			}
 			m.mu.Unlock()
 			m.flush(o)
 			return

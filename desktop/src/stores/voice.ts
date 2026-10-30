@@ -60,10 +60,13 @@ export const useVoice = create<VoiceStore>()((set, get) => {
       switch (ev.op) {
         case 'ready': {
           // After a reconnect, take our place back (the server kept it for 10 s).
-          const { channelId, selfMute, selfDeaf } = get();
+          const { channelId, selfMute, selfDeaf , session } = get();
           const target = channelId ?? ev.d.voice_session?.channel_id ?? null;
           if (target) {
-            gateway.send({ op: 'voice_join', d: { channel_id: target, self_mute: selfMute, self_deaf: selfDeaf } });
+            // Naming the session we still have media for keeps it; without one (app just
+            // started, e.g. after an update) the server starts a fresh one for both peers.
+            const d = { channel_id: target, self_mute: selfMute, self_deaf: selfDeaf, session_id: session?.session_id };
+            gateway.send({ op: 'voice_join', d });
             set({ channelId: target });
           }
           break;

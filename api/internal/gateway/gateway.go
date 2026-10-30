@@ -336,7 +336,7 @@ func (h *Hub) handle(ctx context.Context, c *conn, f protocol.Frame) error {
 		if err != nil || ch.Kind != "voice" {
 			return errors.New("not a voice channel")
 		}
-		h.Voice.Join(c.userID, c.id, id, c.p2p, d.SelfMute, d.SelfDeaf)
+		h.Voice.Join(c.userID, c.id, id, c.p2p, d.SelfMute, d.SelfDeaf, d.SessionID)
 	case protocol.OpVoiceLeave:
 		h.Voice.Leave(c.userID)
 	case protocol.OpVoiceState:

@@ -113,7 +113,8 @@ export type ServerEvent =
 
 export type ClientEvent =
   | { op: 'identify'; d: { token: string; client: { version: string; p2p: boolean } } }
-  | { op: 'voice_join'; d: { channel_id: string; self_mute: boolean; self_deaf: boolean } }
+  // session_id: the session we still have media for, when rejoining after a reconnect.
+  | { op: 'voice_join'; d: { channel_id: string; self_mute: boolean; self_deaf: boolean; session_id?: string } }
   | { op: 'voice_leave'; d: Record<string, never> }
   | { op: 'voice_state'; d: { self_mute: boolean; self_deaf: boolean } }
   | { op: 'rtc_signal'; d: RtcSignal }

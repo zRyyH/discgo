@@ -174,6 +174,9 @@ type VoiceJoin struct {
 	ChannelID string `json:"channel_id"`
 	SelfMute  bool   `json:"self_mute"`
 	SelfDeaf  bool   `json:"self_deaf"`
+	// The session the client still has media for when it rejoins after a gateway
+	// reconnect; empty after an app start (e.g. an update restart).
+	SessionID string `json:"session_id,omitempty"`
 }
 
 type VoiceStateChange struct {

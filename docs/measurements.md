@@ -213,3 +213,15 @@ saved resume state was read and cleared on start. No Defender detection this tim
 (install root `%LOCALAPPDATA%\DiscGo`, not `%TEMP%`). Not covered here: an update that
 takes longer than the 10 s grace (the app then rejoins from the saved resume state), two
 installed apps on two machines, and the S3/HTTPS path.
+
+Found while testing 9A: when the *polite* peer of a P2P call restarted inside the 10 s
+grace (a browser participant reload here, an update restart in practice), the server
+handed it the old session, the impolite peer kept its dead peer connection, P2P timed
+out and `p2p_failed` moved the pair to SFU for the block TTL (1 h). Fix: `voice_join`
+carries the `session_id` the client still has media for; a rejoin without it (app just
+started) gets a new P2P session for both peers. After the fix, same machine:
+
+| Restart | Result |
+|---|---|
+| Polite peer (browser participant closed and reopened in 2 s) | new session, P2P connected 380 ms after it, no `p2p_failed` |
+| Impolite peer (installed app, forced update 0.1.2 → 0.1.3) | new session, P2P connected 526 ms after it; app away from the gateway 3.8 s |
