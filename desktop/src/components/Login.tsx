@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
 import { openExternal } from '../shared/shell';
 import { useSession } from '../stores/session';
-import { Button, Input, cx } from './ui';
+import { Backdrop, BrandMark, Button, Input, cx } from './ui';
 
 export function Login() {
   const { status, error, startGoogle, cancelGoogle, devLogin } = useSession();
@@ -18,7 +18,7 @@ export function Login() {
         <div className="rounded-[20px] border border-border bg-bg-1 px-9 pt-10 pb-8 shadow-[0_24px_64px_rgba(0,0,0,0.5)]">
           <BrandMark />
           <h1 className="mt-6 text-[24px] leading-tight font-semibold tracking-tight">Bem-vindo ao DiscGo</h1>
-          <p className="mt-2 text-msg text-text-2">Voz, vídeo e tela compartilhada com seus amigos, com qualidade alta e pouco atraso.</p>
+          <p className="mt-2 text-msg text-text-2">Voz, vídeo e tela com seus amigos.</p>
 
           {status === 'waiting_browser' ? (
             <WaitingBrowser onRetry={google} onCancel={cancelGoogle} />
@@ -27,7 +27,7 @@ export function Login() {
           )}
 
           {error && (
-            <div role="alert" className="mt-4 flex gap-2 rounded-md border border-danger/30 bg-danger/10 px-3 py-2.5 text-meta text-danger">
+            <div role="alert" className="mt-4 flex animate-[pop_160ms_ease-out] gap-2 rounded-md border border-danger/30 bg-danger/10 px-3 py-2.5 text-meta text-danger">
               <AlertCircle size={16} strokeWidth={2} className="mt-px shrink-0" />
               <span>{error}</span>
             </div>
@@ -44,26 +44,6 @@ export function Login() {
   );
 }
 
-/** Two soft glows and a faded dot grid; static, so it costs nothing after the first paint. */
-function Backdrop() {
-  return (
-    <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-      <div className="absolute -top-56 -left-48 size-[720px] rounded-full bg-[radial-gradient(closest-side,rgba(139,156,255,0.16),transparent)]" />
-      <div className="absolute -right-40 -bottom-64 size-[640px] rounded-full bg-[radial-gradient(closest-side,rgba(61,220,151,0.08),transparent)]" />
-      <div className="absolute inset-0 [mask-image:radial-gradient(ellipse_at_center,black_20%,transparent_70%)] bg-[radial-gradient(rgba(231,233,240,0.07)_1px,transparent_1px)] [background-size:22px_22px]" />
-    </div>
-  );
-}
-
-function BrandMark() {
-  return (
-    <div className="relative flex size-14 items-center justify-center rounded-2xl border border-border bg-bg-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-      <div className="size-7 rounded-full border-[5px] border-accent" />
-      <span className="absolute right-2 bottom-2 size-3 rounded-full border-[3px] border-bg-3 bg-ok" />
-    </div>
-  );
-}
-
 /** Google's "Continue with Google" button, light theme (Google sign-in branding guidelines). */
 function GoogleButton({ busy, onClick }: { busy: boolean; onClick: () => void }) {
   return (
@@ -73,7 +53,7 @@ function GoogleButton({ busy, onClick }: { busy: boolean; onClick: () => void })
       onClick={onClick}
       className={cx(
         'mt-8 flex h-12 w-full items-center justify-center gap-3 rounded-md border border-[#747775] bg-white px-4 text-[14px] font-semibold text-[#1f1f1f]',
-        'transition-colors duration-150 hover:bg-[#f2f2f2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-70',
+        'transition duration-150 hover:bg-[#f2f2f2] enabled:active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-70',
       )}
     >
       {busy ? <Loader2 size={18} className="animate-spin text-[#1f1f1f]" /> : <GoogleLogo />}
@@ -95,7 +75,7 @@ function GoogleLogo() {
 
 function WaitingBrowser({ onRetry, onCancel }: { onRetry: () => void; onCancel: () => void }) {
   return (
-    <div className="mt-8 rounded-lg border border-border bg-bg-2 p-5">
+    <div className="mt-8 animate-[rise_220ms_ease-out] rounded-lg border border-border bg-bg-2 p-5">
       <div className="flex items-center gap-3">
         <div className="relative size-9 shrink-0">
           <div className="absolute inset-0 rounded-full border-[3px] border-bg-3" />
@@ -103,13 +83,13 @@ function WaitingBrowser({ onRetry, onCancel }: { onRetry: () => void; onCancel: 
         </div>
         <div>
           <div className="text-body font-semibold text-text-1">Continue no navegador</div>
-          <div className="text-meta text-text-2">Abrimos o login do Google numa aba nova.</div>
+          <div className="text-meta text-text-2">O login abriu numa aba nova.</div>
         </div>
       </div>
       <ol className="mt-4 space-y-2 text-meta text-text-2">
         <Step n={1}>Escolha a sua conta Google.</Step>
-        <Step n={2}>Permita abrir o DiscGo, se o navegador perguntar.</Step>
-        <Step n={3}>Pronto: o DiscGo volta sozinho para cá.</Step>
+        <Step n={2}>Permita abrir o DiscGo.</Step>
+        <Step n={3}>Pronto, você volta para cá.</Step>
       </ol>
       <div className="mt-5 flex gap-2">
         <Button variant="ghost" className="h-8 flex-1 px-3" onClick={onRetry}>
@@ -136,7 +116,7 @@ function UsernameHint() {
   return (
     <div className="mt-6 rounded-md border border-border bg-bg-0/60 px-4 py-3">
       <div className="text-meta font-semibold text-text-1">Sua conta é criada na hora</div>
-      <p className="mt-0.5 text-meta text-text-3">Nome e foto vêm do Google. Seu usuário é o seu Gmail sem o @gmail.com:</p>
+      <p className="mt-0.5 text-meta text-text-3">Seu usuário é o seu Gmail sem o @gmail.com:</p>
       <div className="mt-2.5 flex items-center gap-2 font-mono text-meta">
         <span className="rounded-sm bg-bg-3 px-1.5 py-0.5 text-text-2">joao.silva@gmail.com</span>
         <ArrowRight size={14} strokeWidth={2} className="shrink-0 text-text-3" />

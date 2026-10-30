@@ -35,7 +35,7 @@ const MemberRow = memo(function MemberRow({ id, dim }: { id: string; dim?: boole
   const m = useCommunity((s) => s.members[id]);
   if (!m) return null;
   return (
-    <div className={cx('flex h-10 items-center gap-2.5 rounded-md px-2 hover:bg-bg-2', dim && 'opacity-45')}>
+    <div className={cx('flex h-10 items-center gap-2.5 rounded-md px-2 transition-colors duration-150 hover:bg-bg-2', dim && 'opacity-45')}>
       <div className="relative">
         <Avatar id={m.id} name={m.display_name} url={m.avatar_url} size={32} />
         {!dim && <span className="absolute -right-0.5 -bottom-0.5 size-3 rounded-full border-2 border-bg-1 bg-ok" />}

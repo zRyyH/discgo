@@ -1,25 +1,26 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useShallow } from 'zustand/react/shallow';
-import { Check, Copy, Hash, Trash2, Volume2, X } from 'lucide-react';
+import { AppWindow, BadgeCheck, Check, Copy, Hash, Mic, Trash2, UserRound, Users, Volume2, X, type LucideIcon } from 'lucide-react';
 import { api, ApiError } from '../api/rest';
 import type { Channel } from '../shared/protocol';
 import { appVersion } from '../shared/shell';
 import { useCommunity } from '../stores/community';
 import { useSession } from '../stores/session';
 import { useSettings } from '../stores/settings';
+import { toast } from '../stores/toast';
 import { useUi, type SettingsSection } from '../stores/ui';
 import { ConfirmDialog } from './ConfirmDialog';
 import { VoiceSettings } from './VoiceSettings';
-import { Avatar, Button, IconButton, Input, Toggle, cx } from './ui';
+import { Avatar, Button, Card, ICON, IconButton, Input, Segmented, Toggle, cx, dialogOverlay, dialogPanel } from './ui';
 
-const sections: { id: SettingsSection; label: string; admin?: boolean }[] = [
-  { id: 'account', label: 'Minha conta' },
-  { id: 'voice', label: 'Voz e vídeo' },
-  { id: 'notifications', label: 'Sons' },
-  { id: 'app', label: 'Aplicativo' },
-  { id: 'channels', label: 'Canais', admin: true },
-  { id: 'members', label: 'Membros', admin: true },
+const sections: { id: SettingsSection; label: string; icon: LucideIcon; admin?: boolean }[] = [
+  { id: 'account', label: 'Minha conta', icon: UserRound },
+  { id: 'voice', label: 'Voz e vídeo', icon: Mic },
+  { id: 'notifications', label: 'Sons', icon: Volume2 },
+  { id: 'app', label: 'Aplicativo', icon: AppWindow },
+  { id: 'channels', label: 'Canais', icon: Hash, admin: true },
+  { id: 'members', label: 'Membros', icon: Users, admin: true },
 ];
 
 export function SettingsDialog() {
@@ -29,8 +30,8 @@ export function SettingsDialog() {
   return (
     <Dialog.Root open={section !== null} onOpenChange={(o) => !o && open(null)}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/60" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 z-50 flex h-[min(640px,85vh)] w-[min(880px,90vw)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-lg border border-border bg-bg-2 shadow-popover">
+        <Dialog.Overlay className={dialogOverlay} />
+        <Dialog.Content className={cx(dialogPanel, 'flex h-[min(640px,85vh)] w-[min(880px,90vw)] overflow-hidden rounded-lg')}>
           <nav className="w-52 shrink-0 border-r border-border bg-bg-1 p-3">
             <Dialog.Title className="mb-2 px-2 text-meta font-semibold tracking-wide text-text-3 uppercase">Configurações</Dialog.Title>
             {sections
@@ -41,10 +42,18 @@ export function SettingsDialog() {
                   type="button"
                   onClick={() => open(s.id)}
                   className={cx(
-                    'mb-0.5 block h-8 w-full rounded-md px-2 text-left text-body transition-colors',
+                    'relative mb-0.5 flex h-9 w-full items-center gap-2.5 rounded-md px-2 text-left text-body transition-colors duration-150',
                     section === s.id ? 'bg-bg-3 text-text-1' : 'text-text-2 hover:bg-bg-2 hover:text-text-1',
                   )}
                 >
+                  <span
+                    aria-hidden
+                    className={cx(
+                      'absolute top-1/2 -left-3 h-5 w-1 -translate-y-1/2 rounded-r-full bg-accent transition-[scale,opacity] duration-200 ease-out',
+                      section === s.id ? 'scale-100 opacity-100' : 'scale-y-0 opacity-0',
+                    )}
+                  />
+                  <s.icon size={16} strokeWidth={ICON.strokeWidth} className="shrink-0" />
                   {s.label}
                 </button>
               ))}
@@ -54,12 +63,14 @@ export function SettingsDialog() {
               <IconButton icon={X} label="Fechar" className="absolute top-3 right-3" />
             </Dialog.Close>
             <Dialog.Description className="sr-only">Preferências do DiscGo</Dialog.Description>
-            {section === 'account' && <Account />}
-            {section === 'voice' && <VoiceSettings />}
-            {section === 'notifications' && <Sounds />}
-            {section === 'app' && <AppBehaviour />}
-            {section === 'channels' && isAdmin && <Channels />}
-            {section === 'members' && isAdmin && <Members />}
+            <div key={section ?? ''} className="animate-[rise_200ms_ease-out]">
+              {section === 'account' && <Account />}
+              {section === 'voice' && <VoiceSettings />}
+              {section === 'notifications' && <Sounds />}
+              {section === 'app' && <AppBehaviour />}
+              {section === 'channels' && isAdmin && <Channels />}
+              {section === 'members' && isAdmin && <Members />}
+            </div>
           </div>
         </Dialog.Content>
       </Dialog.Portal>
@@ -80,7 +91,7 @@ function Account() {
   return (
     <>
       <Heading>Minha conta</Heading>
-      <div className="flex items-center gap-4 rounded-lg bg-bg-1 p-4">
+      <Card className="flex items-center gap-4">
         <Avatar id={me.id} name={me.display_name} url={me.avatar_url} size={64} />
         <div className="min-w-0 flex-1">
           <div className="text-title font-semibold">{me.display_name}</div>
@@ -95,9 +106,12 @@ function Account() {
         <Button variant="danger" onClick={() => void logout()}>
           Sair
         </Button>
-      </div>
-      <p className="mt-4 text-meta text-text-3">Nome e foto vêm da sua conta Google e são atualizados a cada login.</p>
-      <p className="mt-6 text-meta text-text-3">DiscGo {version}</p>
+      </Card>
+      <p className="mt-3 text-meta text-text-3">Nome e foto vêm do Google.</p>
+      <p className="mt-6 flex items-center gap-1.5 text-meta text-text-3">
+        <BadgeCheck size={14} strokeWidth={2} className="text-ok" />
+        Atualizações automáticas · DiscGo {version}
+      </p>
     </>
   );
 }
@@ -125,7 +139,9 @@ function Sounds() {
   return (
     <>
       <Heading>Sons</Heading>
-      <Toggle label="Sons de entrar, sair e silenciar" checked={sounds} onChange={(v) => update({ sounds: v })} />
+      <Card className="py-2">
+        <Toggle label="Sons de entrar, sair e silenciar" checked={sounds} onChange={(v) => update({ sounds: v })} />
+      </Card>
     </>
   );
 }
@@ -138,8 +154,10 @@ function AppBehaviour() {
   return (
     <>
       <Heading>Aplicativo</Heading>
-      <Toggle label="Iniciar com o Windows" checked={startWithWindows} onChange={(v) => update({ startWithWindows: v })} />
-      <Toggle label="Manter na bandeja ao fechar" checked={closeToTray} onChange={(v) => update({ closeToTray: v })} />
+      <Card className="divide-y divide-border py-1">
+        <Toggle label="Iniciar com o Windows" checked={startWithWindows} onChange={(v) => update({ startWithWindows: v })} />
+        <Toggle label="Manter na bandeja ao fechar" checked={closeToTray} onChange={(v) => update({ closeToTray: v })} />
+      </Card>
     </>
   );
 }
@@ -157,9 +175,8 @@ function Channels() {
   const channels = useCommunity((s) => s.channels);
   const [name, setName] = useState('');
   const [kind, setKind] = useState<Channel['kind']>('text');
-  const [error, setError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<Channel | null>(null);
-  const run = (p: Promise<unknown>) => p.then(() => setError(null)).catch((e) => setError(e instanceof ApiError ? e.message : String(e)));
+  const run = (p: Promise<unknown>) => p.catch((e) => toast(e instanceof ApiError ? e.message : String(e), 'danger'));
 
   return (
     <>
@@ -174,22 +191,18 @@ function Channels() {
         <Field label="Nome do canal">
           <Input value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <div className="flex h-9 overflow-hidden rounded-md border border-border">
-          {(['text', 'voice'] as const).map((k) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => setKind(k)}
-              className={cx('px-3 text-body', kind === k ? 'bg-bg-3 text-text-1' : 'text-text-2 hover:text-text-1')}
-            >
-              {k === 'text' ? 'Texto' : 'Voz'}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          value={kind}
+          onChange={setKind}
+          className="h-9 items-center border border-border"
+          options={[
+            { id: 'text', label: 'Texto' },
+            { id: 'voice', label: 'Voz' },
+          ]}
+        />
         <Button type="submit">Criar</Button>
       </form>
-      {error && <p className="mb-3 text-meta text-danger">{error}</p>}
-      <div className="divide-y divide-border rounded-lg border border-border">
+      <div className="divide-y divide-border rounded-lg border border-border bg-bg-1">
         {channels.map((c) => (
           <ChannelRow key={c.id} channel={c} onDelete={() => setToDelete(c)} onRename={(n) => void run(api.updateChannel(c.id, { name: n }))} />
         ))}
@@ -198,7 +211,7 @@ function Channels() {
         open={toDelete !== null}
         onOpenChange={(o) => !o && setToDelete(null)}
         title="Apagar canal"
-        text={`O canal ${toDelete?.name ?? ''} e todas as mensagens dele serão apagados.`}
+        text={`O canal ${toDelete?.name ?? ''} e as mensagens dele serão apagados.`}
         confirm="Apagar canal"
         onConfirm={() => toDelete && void run(api.deleteChannel(toDelete.id))}
       />
@@ -229,13 +242,11 @@ function ChannelRow({ channel, onDelete, onRename }: { channel: Channel; onDelet
 function Members() {
   const members = useCommunity((s) => s.members);
   const myId = useCommunity((s) => s.me?.id);
-  const [error, setError] = useState<string | null>(null);
   const list = Object.values(members).sort((a, b) => a.display_name.localeCompare(b.display_name, 'pt-BR'));
   return (
     <>
       <Heading>Membros</Heading>
-      {error && <p className="mb-3 text-meta text-danger">{error}</p>}
-      <div className="divide-y divide-border rounded-lg border border-border">
+      <div className="divide-y divide-border rounded-lg border border-border bg-bg-1">
         {list.map((m) => (
           <div key={m.id} className="flex items-center gap-3 px-4 py-2">
             <Avatar id={m.id} name={m.display_name} url={m.avatar_url} size={28} />
@@ -247,8 +258,7 @@ function Members() {
               onClick={() =>
                 void api
                   .setRole(m.id, m.role === 'admin' ? 'member' : 'admin')
-                  .then(() => setError(null))
-                  .catch((e) => setError(e instanceof ApiError ? e.message : String(e)))
+                  .catch((e) => toast(e instanceof ApiError ? e.message : String(e), 'danger'))
               }
             >
               {m.role === 'admin' ? 'Remover admin' : 'Tornar admin'}

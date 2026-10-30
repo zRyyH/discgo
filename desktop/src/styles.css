@@ -105,6 +105,47 @@ body {
   }
 }
 
+/* The voice bar coming up from the bottom of the pane, and going back down. */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sink {
+  to {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* Leaving dialogs and popovers (Radix waits for it on data-[state=closed]). */
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes pop-out {
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+/* The brand dot while connecting. */
+@keyframes breathe {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.82);
+  }
+}
+
 /* Thin, quiet scrollbars. */
 ::-webkit-scrollbar {
   width: 10px;
@@ -125,6 +166,12 @@ body {
 
 button {
   cursor: default;
+}
+
+/* Keyboard focus: the accent, not the browser's white ring. Inputs show focus with their border. */
+:where(button, a, [role='tab']):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-accent) 75%, transparent);
+  outline-offset: 1px;
 }
 
 .select-text {

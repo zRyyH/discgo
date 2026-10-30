@@ -252,3 +252,21 @@ real log-on start with `--autostart` staying in the tray.
 
 The progress bar is the Windows control with its visual style removed so it takes the
 accent; the SmartScreen warning on first run stays until the code is signed.
+
+## Phase 9C — 2026-10-29 (dev-1, UI polish)
+
+Same scroll check as phase 4 (`?spike=scroll`, channel with 2,000 messages, 80 px per
+frame, dev build in Edge), after the polish:
+
+| Run | Frames | p50 / p95 / max | Missed frames | Long animation frames |
+|---|---|---|---|---|
+| 1 | 3,938 | 16.7 / 16.8 / 33.3 ms | 3 (frames 30, 73, 87) | 0 |
+| 2 | 3,948 | 16.7 / 16.8 / 33.3 ms | 2 (frames 34, 83) | 0 |
+
+The missed frames all fall in the first 1.5 s of the run, as in phase 4's run 1 (2 missed);
+the rest scrolls at the display rate. Messages animate only when they arrive live (< 5 s old,
+once per id) and icon buttons only when their icon changes, so rows scrolling in start no
+animations. Scripting time per frame was not profiled in DevTools this time.
+
+Found on the way: the dialog overlays used `bg-black/60`, and the theme defines no
+`black`, so the background was never dimmed; they use `bg-bg-0/75` now.

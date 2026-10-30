@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
 import { boot } from './app/boot';
 import { Login } from './components/Login';
 import { Toaster, UpdateBanner } from './components/Notices';
 import { Titlebar } from './components/Titlebar';
+import { Splash } from './components/ui';
 import { Workspace } from './components/Workspace';
 import { useCommunity } from './stores/community';
 import { useSession } from './stores/session';
@@ -22,9 +22,7 @@ export function App() {
       {status === 'signed_in' ? (
         <Workspace />
       ) : status === 'loading' ? (
-        <div className="flex flex-1 items-center justify-center text-text-3">
-          <Loader2 size={22} className="animate-spin" />
-        </div>
+        <Splash text="Abrindo…" />
       ) : (
         <Login />
       )}

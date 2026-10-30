@@ -5,8 +5,9 @@ import { fileSize } from '../lib/format';
 import type { Attachment } from '../shared/protocol';
 import { useCommunity } from '../stores/community';
 import { useMessages } from '../stores/messages';
+import { toast } from '../stores/toast';
 import { useUi } from '../stores/ui';
-import { IconButton, cx } from './ui';
+import { IconButton, Tip, cx } from './ui';
 
 interface Pending {
   id: number;
@@ -34,7 +35,6 @@ async function imageSize(file: File): Promise<{ width?: number; height?: number 
 export function Composer({ channelId, channelName }: { channelId: string; channelName: string }) {
   const [text, setText] = useState('');
   const [pending, setPending] = useState<Pending[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -44,7 +44,6 @@ export function Composer({ channelId, channelName }: { channelId: string; channe
   useEffect(() => {
     ref.current?.focus();
     setText('');
-    setError(null);
     setPending((p) => {
       p.forEach((x) => x.abort.abort());
       return [];
@@ -86,14 +85,13 @@ export function Composer({ channelId, channelName }: { channelId: string; channe
     const content = text.trim();
     if (sending || uploading || (!content && ready.length === 0)) return;
     setSending(true);
-    setError(null);
     try {
       const m = await api.sendMessage(channelId, content, ready);
       upsert(m);
       setText('');
       setPending([]);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Não foi possível enviar.');
+      toast(e instanceof ApiError ? e.message : 'Não foi possível enviar.', 'danger');
     } finally {
       setSending(false);
       ref.current?.focus();
@@ -119,7 +117,7 @@ export function Composer({ channelId, channelName }: { channelId: string; channe
       {pending.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-2">
           {pending.map((p) => (
-            <div key={p.id} className="relative flex w-56 items-center gap-2 overflow-hidden rounded-md border border-border bg-bg-1 px-3 py-2">
+            <div key={p.id} className="relative flex w-56 animate-[pop_160ms_ease-out] items-center gap-2 overflow-hidden rounded-md border border-border bg-bg-1 px-3 py-2">
               <FileText size={20} strokeWidth={1.5} className="shrink-0 text-accent" />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-body">{p.file.name}</div>
@@ -138,7 +136,7 @@ export function Composer({ channelId, channelName }: { channelId: string; channe
                 }}
               />
               {!p.attachment && !p.error && (
-                <div className="absolute bottom-0 left-0 h-0.5 bg-accent transition-[width] duration-150" style={{ width: `${p.progress * 100}%` }} />
+                <div className="absolute inset-x-0 bottom-0 h-0.5 origin-left bg-accent transition-transform duration-150" style={{ transform: `scaleX(${p.progress})` }} />
               )}
             </div>
           ))}
@@ -179,14 +177,32 @@ export function Composer({ channelId, channelName }: { channelId: string; channe
           }}
           className="max-h-[220px] min-h-8 flex-1 resize-none bg-transparent px-1 py-1.5 text-msg text-text-1 outline-none placeholder:text-text-3"
         />
-        <IconButton
-          icon={SendHorizontal}
-          label={uploading ? 'Aguardando envio dos anexos' : 'Enviar'}
-          disabled={sending || uploading || (!text.trim() && ready.length === 0)}
+        <SendButton
+          ready={!sending && !uploading && (!!text.trim() || ready.length > 0)}
+          label={uploading ? 'Aguardando os anexos' : 'Enviar'}
           onClick={() => void send()}
         />
       </div>
-      {error && <p className="mt-1 text-meta text-danger">{error}</p>}
     </div>
+  );
+}
+
+/** Lights up in the accent once there is something to send. */
+function SendButton({ ready, label, onClick }: { ready: boolean; label: string; onClick: () => void }) {
+  return (
+    <Tip label={label}>
+      <button
+        type="button"
+        aria-label={label}
+        disabled={!ready}
+        onClick={onClick}
+        className={cx(
+          'flex size-8 shrink-0 items-center justify-center rounded-md transition duration-150 enabled:active:scale-90',
+          ready ? 'scale-100 bg-accent text-bg-0 hover:brightness-110' : 'scale-90 text-text-3',
+        )}
+      >
+        <SendHorizontal size={17} strokeWidth={2} />
+      </button>
+    </Tip>
   );
 }

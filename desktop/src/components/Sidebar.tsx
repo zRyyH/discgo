@@ -58,10 +58,11 @@ function FriendsRow() {
       type="button"
       onClick={() => setView('friends')}
       className={cx(
-        'flex h-9 w-full items-center gap-2.5 rounded-md px-2 text-left text-body font-medium transition-colors duration-150',
+        'relative flex h-9 w-full items-center gap-2.5 rounded-md px-2 text-left text-body font-medium transition-colors duration-150',
         active ? 'bg-bg-3 text-text-1' : 'text-text-2 hover:bg-bg-2 hover:text-text-1',
       )}
     >
+      <ActivePill on={active} />
       <Users {...ICON} className="shrink-0" />
       <span className="flex-1 truncate">Amigos</span>
       {incoming > 0 && <CountBadge n={incoming} />}
@@ -70,17 +71,18 @@ function FriendsRow() {
 }
 
 const TextChannelRow = memo(function TextChannelRow({ channel }: { channel: Channel }) {
-  const active = useUi((s) => s.view !== 'friends' && s.channelId === channel.id);
+  const active = useUi((s) => s.view === 'chat' && s.channelId === channel.id);
   const select = useUi((s) => s.selectChannel);
   return (
     <button
       type="button"
       onClick={() => select(channel.id)}
       className={cx(
-        'flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-body transition-colors duration-150',
+        'relative flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-body transition-colors duration-150',
         active ? 'bg-bg-3 text-text-1' : 'text-text-2 hover:bg-bg-2 hover:text-text-1',
       )}
     >
+      <ActivePill on={active} />
       <Hash {...ICON} className="shrink-0 text-text-3" />
       <span className="truncate">{channel.name}</span>
     </button>
@@ -108,11 +110,12 @@ const VoiceChannelRow = memo(function VoiceChannelRow({ channel }: { channel: Ch
           setView('call');
         }}
         className={cx(
-          'flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-body transition-colors duration-150',
-          joined ? 'text-text-1' : 'text-text-2 hover:bg-bg-2 hover:text-text-1',
+          'relative flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-body transition-colors duration-150',
+          joined ? 'text-text-1 hover:bg-bg-2' : 'text-text-2 hover:bg-bg-2 hover:text-text-1',
         )}
       >
-        <Volume2 {...ICON} className="shrink-0 text-text-3" />
+        <ActivePill on={joined} tone="ok" />
+        <Volume2 {...ICON} className={cx('shrink-0 transition-colors duration-150', joined ? 'text-ok' : 'text-text-3')} />
         <span className="truncate">{channel.name}</span>
       </button>
       {ids.length > 0 && (
@@ -133,7 +136,7 @@ const VoiceParticipant = memo(function VoiceParticipant({ userId }: { userId: st
   const isMe = useCommunity((s) => s.me?.id === userId);
   if (!member || !state) return null;
   const row = (
-    <li className="flex h-7 items-center gap-2 rounded-md px-1 text-body text-text-2 hover:bg-bg-2">
+    <li className="flex h-7 animate-[rise_180ms_ease-out] items-center gap-2 rounded-md px-1 text-body text-text-2 transition-colors duration-150 hover:bg-bg-2">
       <Avatar id={member.id} name={member.display_name} url={member.avatar_url} size={20} ring={speaking && !state.self_mute} />
       <span className="flex-1 truncate">{member.display_name}</span>
       {state.self_deaf ? (
@@ -160,19 +163,42 @@ function UserPanel() {
   if (!me) return null;
   return (
     <div className="flex h-14 items-center gap-2 border-t border-border bg-bg-0/40 px-2">
-      <Avatar id={me.id} name={me.display_name} url={me.avatar_url} size={32} />
+      <div className="relative">
+        <Avatar id={me.id} name={me.display_name} url={me.avatar_url} size={32} />
+        <span
+          className={cx(
+            'absolute -right-0.5 -bottom-0.5 size-3 rounded-full border-2 border-bg-1 transition-colors duration-300',
+            status === 'connected' ? 'bg-ok' : 'bg-warn',
+          )}
+        />
+      </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-body font-semibold">{me.display_name}</div>
         <div className={cx('truncate text-meta', status === 'connected' ? 'text-text-3' : 'text-warn')}>{label}</div>
       </div>
-      <IconButton icon={selfMute ? MicOff : Mic} label={selfMute ? 'Ativar microfone' : 'Silenciar'} danger={selfMute} onClick={toggleMute} />
+      <IconButton icon={selfMute ? MicOff : Mic} label={selfMute ? 'Ativar microfone' : 'Silenciar'} danger={selfMute} active={selfMute} onClick={toggleMute} />
       <IconButton
         icon={selfDeaf ? HeadphoneOff : Headphones}
         label={selfDeaf ? 'Ativar áudio' : 'Ensurdecer'}
         danger={selfDeaf}
+        active={selfDeaf}
         onClick={toggleDeaf}
       />
       <IconButton icon={Settings} label="Configurações" onClick={() => openSettings('account')} />
     </div>
+  );
+}
+
+/** Discord-style marker at the sidebar's left edge for the open (or joined) row. */
+function ActivePill({ on, tone = 'accent' }: { on: boolean; tone?: 'accent' | 'ok' }) {
+  return (
+    <span
+      aria-hidden
+      className={cx(
+        'absolute top-1/2 -left-2 h-5 w-1 -translate-y-1/2 rounded-r-full transition-[scale,opacity] duration-200 ease-out',
+        tone === 'ok' ? 'bg-ok' : 'bg-accent',
+        on ? 'scale-100 opacity-100' : 'scale-y-0 opacity-0',
+      )}
+    />
   );
 }

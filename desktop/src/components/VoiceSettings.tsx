@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSettings } from '../stores/settings';
-import { Toggle } from './ui';
+import { Card, Toggle } from './ui';
 
 /** Device selection (PLAN 7.4: enumerateDevices + setSinkId). */
 export function VoiceSettings() {
@@ -19,7 +19,7 @@ export function VoiceSettings() {
   return (
     <>
       <h2 className="mb-4 text-title font-semibold">Voz e vídeo</h2>
-      <div className="grid grid-cols-2 gap-4">
+      <Card className="grid grid-cols-2 gap-4">
         <Select label="Microfone" value={s.inputDeviceId} options={pick('audioinput')} onChange={(v) => s.update({ inputDeviceId: v })} />
         <Select label="Saída de áudio" value={s.outputDeviceId} options={pick('audiooutput')} onChange={(v) => s.update({ outputDeviceId: v })} />
         <Select
@@ -29,10 +29,10 @@ export function VoiceSettings() {
           empty="Nenhuma câmera encontrada"
           onChange={(v) => s.update({ videoDeviceId: v })}
         />
-      </div>
-      <div className="mt-6 max-w-md">
-        <Toggle label="Voz em alta qualidade (96 kbit/s)" checked={s.highQualityVoice} onChange={(v) => s.update({ highQualityVoice: v })} />
-      </div>
+      </Card>
+      <Card className="mt-4 py-2">
+        <Toggle label="Voz em alta qualidade" checked={s.highQualityVoice} onChange={(v) => s.update({ highQualityVoice: v })} />
+      </Card>
     </>
   );
 }
@@ -44,7 +44,7 @@ function Select(props: { label: string; value: string; options: MediaDeviceInfo[
       <select
         value={props.value}
         onChange={(e) => props.onChange(e.target.value)}
-        className="h-9 w-full rounded-md border border-border bg-bg-0 px-2 text-body text-text-1 outline-none focus:border-accent"
+        className="h-9 w-full rounded-md border border-border bg-bg-0 px-2 text-body text-text-1 outline-none transition-colors duration-150 focus:border-accent"
       >
         {props.options.length === 0 && <option value="">{props.empty ?? 'Padrão do sistema'}</option>}
         {props.options.map((d) => (

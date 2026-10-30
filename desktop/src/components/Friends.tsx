@@ -7,7 +7,7 @@ import type { Relationship } from '../shared/protocol';
 import { useCommunity } from '../stores/community';
 import { useFriends } from '../stores/friends';
 import { ConfirmDialog } from './ConfirmDialog';
-import { Avatar, Button, ICON, Tip, cx } from './ui';
+import { Avatar, Button, Card, EmptyState, ICON, Segmented, Tip, cx } from './ui';
 
 type Tab = 'online' | 'all' | 'pending' | 'add';
 
@@ -40,20 +40,28 @@ export function FriendsPane() {
         <Users {...ICON} className="mr-1 text-text-3" />
         <h2 className="mr-3 text-title font-semibold">Amigos</h2>
         <div className="mr-2 h-5 w-px bg-border" />
-        <TabButton active={tab === 'online'} onClick={() => setTab('online')}>
-          Online
-        </TabButton>
-        <TabButton active={tab === 'all'} onClick={() => setTab('all')}>
-          Todos
-        </TabButton>
-        <TabButton active={tab === 'pending'} onClick={() => setTab('pending')} badge={lists.incoming.length}>
-          Pendentes
-        </TabButton>
+        <Segmented
+          value={tab === 'add' ? ('' as Tab) : tab}
+          onChange={setTab}
+          options={[
+            { id: 'online', label: 'Online' },
+            { id: 'all', label: 'Todos' },
+            {
+              id: 'pending',
+              label: (
+                <>
+                  Pendentes
+                  {lists.incoming.length > 0 && <CountBadge n={lists.incoming.length} />}
+                </>
+              ),
+            },
+          ]}
+        />
         <button
           type="button"
           onClick={() => setTab('add')}
           className={cx(
-            'ml-2 flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-body font-semibold transition-colors duration-150',
+            'ml-2 flex h-7 items-center gap-1.5 rounded-md px-2.5 text-body font-semibold transition duration-150 active:scale-[0.97]',
             tab === 'add' ? 'bg-accent/15 text-accent' : 'bg-accent text-bg-0 hover:brightness-110',
           )}
         >
@@ -68,7 +76,7 @@ export function FriendsPane() {
           <List
             title={`Online — ${lists.online.length}`}
             items={lists.online}
-            empty={{ icon: Users, text: lists.friends.length ? 'Nenhum amigo online agora.' : 'Você ainda não tem amigos por aqui.' }}
+            empty={{ icon: Users, text: lists.friends.length ? 'Ninguém online agora.' : 'Nenhum amigo ainda.' }}
             onEmptyAction={lists.friends.length ? undefined : () => setTab('add')}
             onRemove={setToRemove}
           />
@@ -77,14 +85,14 @@ export function FriendsPane() {
           <List
             title={`Todos os amigos — ${lists.friends.length}`}
             items={lists.friends}
-            empty={{ icon: Users, text: 'Você ainda não tem amigos por aqui.' }}
+            empty={{ icon: Users, text: 'Nenhum amigo ainda.' }}
             onEmptyAction={() => setTab('add')}
             onRemove={setToRemove}
           />
         )}
         {tab === 'pending' &&
           (lists.incoming.length + lists.outgoing.length === 0 ? (
-            <Empty icon={Inbox} text="Nenhum pedido de amizade pendente." />
+            <EmptyState icon={Inbox} text="Nenhum pedido pendente." />
           ) : (
             <div className="px-6 py-4">
               {lists.incoming.length > 0 && <Section title={`Recebidos — ${lists.incoming.length}`} items={lists.incoming} onRemove={setToRemove} />}
@@ -97,7 +105,7 @@ export function FriendsPane() {
         open={toRemove !== null}
         onOpenChange={(o) => !o && setToRemove(null)}
         title="Remover amigo"
-        text={`Tem certeza de que quer remover ${toRemove?.user.display_name ?? ''} dos seus amigos?`}
+        text={`Remover ${toRemove?.user.display_name ?? ''} dos seus amigos?`}
         confirm="Remover amigo"
         onConfirm={() => toRemove && void api.removeFriend(toRemove.user.id).catch(() => {})}
       />
@@ -105,25 +113,9 @@ export function FriendsPane() {
   );
 }
 
-function TabButton({ active, onClick, badge, children }: { active: boolean; onClick: () => void; badge?: number; children: string }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cx(
-        'flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-body font-medium transition-colors duration-150',
-        active ? 'bg-bg-3 text-text-1' : 'text-text-2 hover:bg-bg-3/60 hover:text-text-1',
-      )}
-    >
-      {children}
-      {!!badge && <CountBadge n={badge} />}
-    </button>
-  );
-}
-
 export function CountBadge({ n }: { n: number }) {
   return (
-    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[11px] leading-none font-bold text-white">
+    <span key={n} className="flex h-4 min-w-4 animate-[pop_180ms_ease-out] items-center justify-center rounded-full bg-danger px-1 text-[11px] leading-none font-bold text-white">
       {n > 99 ? '99+' : n}
     </span>
   );
@@ -136,7 +128,15 @@ function List(props: {
   onEmptyAction?: () => void;
   onRemove: (r: Relationship) => void;
 }) {
-  if (props.items.length === 0) return <Empty {...props.empty} action={props.onEmptyAction} />;
+  if (props.items.length === 0) {
+    const action = props.onEmptyAction && (
+      <Button onClick={props.onEmptyAction}>
+        <UserPlus size={16} strokeWidth={2} />
+        Adicionar amigo
+      </Button>
+    );
+    return <EmptyState {...props.empty} action={action} />;
+  }
   return (
     <div className="px-6 py-4">
       <Section title={props.title} items={props.items} onRemove={props.onRemove} />
@@ -149,15 +149,15 @@ function Section({ title, items, onRemove }: { title: string; items: Relationshi
     <section className="mb-6">
       <h3 className="mb-2 px-3 text-meta font-semibold tracking-wide text-text-3 uppercase">{title}</h3>
       <ul>
-        {items.map((r) => (
-          <FriendRow key={r.user.id} rel={r} onRemove={onRemove} />
+        {items.map((r, i) => (
+          <FriendRow key={r.user.id} rel={r} index={i} onRemove={onRemove} />
         ))}
       </ul>
     </section>
   );
 }
 
-const FriendRow = memo(function FriendRow({ rel, onRemove }: { rel: Relationship; onRemove: (r: Relationship) => void }) {
+const FriendRow = memo(function FriendRow({ rel, index, onRemove }: { rel: Relationship; index: number; onRemove: (r: Relationship) => void }) {
   // Prefer the live member (fresh name, photo and presence).
   const member = useCommunity((s) => s.members[rel.user.id]);
   const user = member ?? rel.user;
@@ -168,10 +168,13 @@ const FriendRow = memo(function FriendRow({ rel, onRemove }: { rel: Relationship
     p.catch(() => {}).finally(() => setBusy(false));
   };
   const subtitle =
-    rel.type === 'incoming' ? 'Pedido de amizade recebido' : rel.type === 'outgoing' ? 'Pedido de amizade enviado' : online ? 'Online' : 'Offline';
+    rel.type === 'incoming' ? 'Quer ser seu amigo' : rel.type === 'outgoing' ? 'Pedido enviado' : online ? 'Online' : 'Offline';
 
   return (
-    <li className="group flex h-[60px] items-center gap-3 rounded-md border-t border-border px-3 transition-colors duration-150 first:border-t-0 hover:border-transparent hover:bg-bg-3/60 [&:hover+li]:border-transparent">
+    <li
+      className="group flex h-[60px] animate-[rise_200ms_ease-out_both] items-center gap-3 rounded-md border-t border-border px-3 transition-colors duration-150 first:border-t-0 hover:border-transparent hover:bg-bg-3/60 [&:hover+li]:border-transparent"
+      style={{ animationDelay: `${Math.min(index, 5) * 30}ms` }}
+    >
       <div className="relative">
         <Avatar id={user.id} name={user.display_name} url={user.avatar_url} size={36} />
         {rel.type === 'friend' && (
@@ -216,7 +219,7 @@ function RoundAction(props: { icon: LucideIcon; label: string; tone: 'ok' | 'dan
         disabled={props.disabled}
         onClick={props.onClick}
         className={cx(
-          'flex size-9 items-center justify-center rounded-full bg-bg-1 text-text-2 transition-colors duration-150 disabled:opacity-40',
+          'flex size-9 items-center justify-center rounded-full bg-bg-1 text-text-2 transition duration-150 enabled:active:scale-90 disabled:opacity-40',
           props.tone === 'ok' ? 'hover:text-ok' : 'hover:text-danger',
         )}
       >
@@ -226,31 +229,15 @@ function RoundAction(props: { icon: LucideIcon; label: string; tone: 'ok' | 'dan
   );
 }
 
-function Empty({ icon: Icon, text, action }: { icon: LucideIcon; text: string; action?: () => void }) {
-  return (
-    <div className="flex h-full min-h-[320px] flex-col items-center justify-center gap-4 px-6 text-center">
-      <div className="flex size-16 items-center justify-center rounded-full bg-bg-1 text-text-3">
-        <Icon size={28} strokeWidth={1.5} />
-      </div>
-      <p className="text-body text-text-2">{text}</p>
-      {action && (
-        <Button onClick={action}>
-          <UserPlus size={16} strokeWidth={2} />
-          Adicionar amigo
-        </Button>
-      )}
-    </div>
-  );
-}
-
 const addErrors: Record<string, string> = {
-  user_not_found: 'Não achamos ninguém com esse usuário. Confira se digitou o Gmail certo, sem o @gmail.com.',
-  self_request: 'Esse é o seu próprio usuário.',
+  user_not_found: 'Ninguém com esse usuário. Confira o Gmail, sem o @gmail.com.',
+  self_request: 'Esse é o seu usuário.',
   already_friends: 'Vocês já são amigos.',
-  already_requested: 'Você já mandou um pedido para essa pessoa. Agora é esperar ela aceitar.',
+  already_requested: 'Pedido já enviado.',
   network: 'Sem conexão com o servidor.',
 };
 
+/** Same structure as the sign-in card: mark, one title, one line, the field, then your own username. */
 function AddFriend() {
   const [username, setUsername] = useState('');
   const [busy, setBusy] = useState(false);
@@ -265,10 +252,7 @@ function AddFriend() {
       const rel = await api.addFriend(value);
       setResult({
         ok: true,
-        text:
-          rel.type === 'friend'
-            ? `${rel.user.display_name} já tinha te mandado um pedido: agora vocês são amigos!`
-            : `Pedido enviado para ${rel.user.display_name}.`,
+        text: rel.type === 'friend' ? `Agora você e ${rel.user.display_name} são amigos!` : `Pedido enviado para ${rel.user.display_name}.`,
       });
       setUsername('');
     } catch (err) {
@@ -279,40 +263,50 @@ function AddFriend() {
   };
 
   return (
-    <div className="max-w-[720px] px-8 py-7">
-      <h2 className="text-[17px] font-semibold">Adicionar amigo</h2>
-      <p className="mt-1 text-body text-text-2">
-        Digite o usuário da pessoa. É o Gmail dela sem o <span className="font-mono text-text-1">@gmail.com</span>.
-      </p>
-
-      <form onSubmit={(e) => void submit(e)} className="mt-4">
-        <div
-          className={cx(
-            'flex h-[52px] items-center gap-2 rounded-md border bg-bg-0 pr-2 pl-4 transition-colors duration-150',
-            result && !result.ok ? 'border-danger' : result?.ok ? 'border-ok' : 'border-border focus-within:border-accent',
-          )}
-        >
-          <input
-            autoFocus
-            value={username}
-            spellCheck={false}
-            autoComplete="off"
-            placeholder="ex.: joao.silva"
-            onChange={(e) => {
-              setUsername(e.target.value);
-              setResult(null);
-            }}
-            className="h-full min-w-0 flex-1 bg-transparent text-msg text-text-1 outline-none placeholder:text-text-3"
-          />
-          <Button type="submit" disabled={!username.trim() || busy} className="h-9">
-            {busy && <Loader2 size={15} className="animate-spin" />}
-            Enviar pedido de amizade
-          </Button>
+    <div className="flex justify-center px-6 py-10">
+      <Card className="w-full max-w-[480px] animate-[rise_220ms_ease-out] rounded-[20px] px-8 pt-8 pb-7">
+        <div className="flex size-12 items-center justify-center rounded-2xl border border-border bg-bg-3 text-accent shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+          <UserPlus size={22} strokeWidth={1.75} />
         </div>
-        {result && <p className={cx('mt-2 text-meta', result.ok ? 'text-ok' : 'text-danger')}>{result.text}</p>}
-      </form>
+        <h2 className="mt-5 text-[20px] leading-tight font-semibold tracking-tight">Adicionar amigo</h2>
+        <p className="mt-1.5 text-body text-text-2">
+          Digite o Gmail da pessoa, sem o <span className="font-mono text-text-1">@gmail.com</span>.
+        </p>
 
-      <MyUsername />
+        <form onSubmit={(e) => void submit(e)} className="mt-5">
+          <div
+            className={cx(
+              'flex h-12 items-center gap-2 rounded-md border bg-bg-0 pr-1.5 pl-4 transition-colors duration-150',
+              result && !result.ok ? 'border-danger' : result?.ok ? 'border-ok' : 'border-border focus-within:border-accent',
+            )}
+          >
+            <input
+              autoFocus
+              value={username}
+              spellCheck={false}
+              autoComplete="off"
+              placeholder="joao.silva"
+              onChange={(e) => {
+                setUsername(e.target.value);
+                setResult(null);
+              }}
+              className="h-full min-w-0 flex-1 bg-transparent font-mono text-msg text-text-1 outline-none placeholder:font-sans placeholder:text-text-3"
+            />
+            <Button type="submit" disabled={!username.trim() || busy} className="h-9">
+              {busy && <Loader2 size={15} className="animate-spin" />}
+              Enviar
+            </Button>
+          </div>
+          {result && (
+            <p key={result.text} className={cx('mt-2 flex animate-[pop_160ms_ease-out] items-center gap-1.5 text-meta', result.ok ? 'text-ok' : 'text-danger')}>
+              {result.ok ? <Check size={14} strokeWidth={2.25} /> : <X size={14} strokeWidth={2.25} />}
+              {result.text}
+            </p>
+          )}
+        </form>
+
+        <MyUsername />
+      </Card>
     </div>
   );
 }
@@ -323,14 +317,12 @@ function MyUsername() {
   if (!me) return null;
   const username = me.username;
   return (
-    <div className="mt-8 flex items-center gap-4 rounded-lg border border-border bg-bg-1 p-4">
-      <Avatar id={me.id} name={me.display_name} url={me.avatar_url} size={44} />
+    <div className="mt-6 flex items-center gap-3 rounded-md border border-border bg-bg-0/60 px-4 py-3">
       <div className="min-w-0 flex-1">
-        <div className="text-body font-semibold text-text-1">Seu usuário</div>
-        <div className="text-meta text-text-2">Passe para os seus amigos te adicionarem.</div>
+        <div className="text-meta font-semibold text-text-1">Seu usuário</div>
+        <code className="block truncate font-mono text-body text-accent select-text">{username}</code>
       </div>
-      <code className="truncate rounded-sm bg-bg-0 px-2.5 py-1.5 font-mono text-body text-text-1 select-text">{username}</code>
-      <Tip label={copied ? 'Copiado!' : 'Copiar usuário'}>
+      <Tip label={copied ? 'Copiado!' : 'Copiar'}>
         <button
           type="button"
           aria-label="Copiar usuário"
@@ -339,9 +331,9 @@ function MyUsername() {
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
           }}
-          className="flex size-9 items-center justify-center rounded-md text-text-2 transition-colors duration-150 hover:bg-bg-3 hover:text-text-1"
+          className="flex size-9 items-center justify-center rounded-md text-text-2 transition duration-150 hover:bg-bg-3 hover:text-text-1 active:scale-90"
         >
-          {copied ? <Check size={18} strokeWidth={2} className="text-ok" /> : <Copy {...ICON} />}
+          {copied ? <Check size={18} strokeWidth={2} className="animate-[pop_160ms_ease-out] text-ok" /> : <Copy {...ICON} />}
         </button>
       </Tip>
     </div>

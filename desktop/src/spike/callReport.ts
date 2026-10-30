@@ -4,6 +4,7 @@
 //   ?force_p2p_fail=1             (read by media/call.ts) make P2P fail, like a peer without UDP
 //   ?cam=1 / ?mute=1              turn the camera on / mute once in the call
 //   ?share=1[&preset=1440p60]     share the primary monitor once in the call (Tauri only)
+//   ?view=friends / ?settings=app open that screen once connected (for screenshots)
 import { useCall } from '../media/call';
 import { useScreen } from '../media/ScreenShare';
 import type { Preset } from '../shared/engine';
@@ -26,6 +27,19 @@ function shareOnce(preset: Preset) {
 
 export function startDevCallTools() {
   const q = new URLSearchParams(location.search);
+  // ?view=friends / ?settings=<section>: open a screen once connected (screenshots).
+  const view = q.get('view');
+  const section = q.get('settings');
+  if (view || section) {
+    const open = () => {
+      if (!useCommunity.getState().ready) return;
+      unsub();
+      if (view === 'friends' || view === 'chat') useUi.getState().setView(view);
+      if (section) useUi.getState().openSettings(section as Parameters<ReturnType<typeof useUi.getState>['openSettings']>[0]);
+    };
+    const unsub = useCommunity.subscribe(open);
+    open();
+  }
   const autojoin = q.get('autojoin');
   if (autojoin) {
     const tryJoin = () => {

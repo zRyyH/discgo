@@ -20,6 +20,15 @@ type Row = { kind: 'day'; key: string; label: string } | { kind: 'msg'; key: str
 
 const dayFmt = new Intl.DateTimeFormat('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
 
+// Messages that just arrived slide in once; history and rows scrolling back in do not.
+const FRESH_MS = 5_000;
+const animated = new Set<string>();
+function arrivesNow(m: Message) {
+  if (animated.has(m.id) || Date.now() - new Date(m.created_at).getTime() > FRESH_MS) return false;
+  animated.add(m.id);
+  return true;
+}
+
 function buildRows(items: Message[]): Row[] {
   const rows: Row[] = [];
   let prev: Message | undefined;
@@ -114,9 +123,9 @@ export function MessageList({ channelId }: { channelId: string }) {
 function DayDivider({ label }: { label: string }) {
   return (
     <div className="mx-4 flex items-center gap-3 py-3 text-meta text-text-3">
-      <div className="h-px flex-1 bg-border" />
-      {label}
-      <div className="h-px flex-1 bg-border" />
+      <div className="h-px flex-1 bg-border/60" />
+      <span className="rounded-full border border-border/60 px-2.5 py-0.5">{label}</span>
+      <div className="h-px flex-1 bg-border/60" />
     </div>
   );
 }
@@ -143,12 +152,19 @@ const MessageRow = memo(function MessageRow({ message, head }: { message: Messag
   const editing = useUi((s) => s.editingId === message.id);
   const setEditing = useUi((s) => s.setEditing);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [fresh] = useState(() => arrivesNow(message));
   const name = author?.display_name ?? 'Usuário removido';
 
   const remove = () => void api.deleteMessage(message.id).catch(() => {});
 
   return (
-    <div className={cx('group relative flex gap-3 px-4 hover:bg-bg-1/60', head ? 'mt-3 pt-1 pb-0.5' : 'py-0.5')}>
+    <div
+      className={cx(
+        'group relative flex gap-3 px-4 transition-colors duration-100 hover:bg-bg-1/60',
+        head ? 'mt-3 pt-1 pb-0.5' : 'py-0.5',
+        fresh && 'animate-[rise_200ms_ease-out]',
+      )}
+    >
       <div className="w-10 shrink-0">
         {head ? (
           <Avatar id={message.author_id} name={name} url={author?.avatar_url} size={40} />
@@ -192,7 +208,7 @@ const MessageRow = memo(function MessageRow({ message, head }: { message: Messag
         )}
       </div>
       {!editing && (
-        <div className="absolute -top-3 right-4 hidden rounded-md border border-border bg-bg-2 shadow-popover group-hover:flex">
+        <div className="pointer-events-none absolute -top-3 right-4 flex translate-y-1 rounded-md border border-border bg-bg-2 opacity-0 shadow-popover transition-[opacity,translate] duration-150 group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100">
           {message.content && (
             <IconButton icon={Copy} label="Copiar texto" size={16} onClick={() => void navigator.clipboard.writeText(message.content)} />
           )}
@@ -241,7 +257,7 @@ function EditBox({ message, onDone }: { message: Message; onDone: () => void }) 
         }}
         className="w-full resize-none rounded-md border border-border bg-bg-3 px-3 py-2 text-msg text-text-1 outline-none focus:border-accent"
       />
-      <p className="text-meta text-text-3">Esc para cancelar · Enter para salvar</p>
+      <p className="text-meta text-text-3">Esc cancela · Enter salva</p>
     </div>
   );
 }
@@ -280,7 +296,7 @@ function AttachmentView({ attachment: a }: { attachment: Attachment }) {
     const h = a.height ?? 200;
     const scale = Math.min(1, 400 / w, 300 / h);
     return (
-      <button type="button" onClick={() => void openExternal(a.url!)} className="block overflow-hidden rounded-md bg-bg-3">
+      <button type="button" onClick={() => void openExternal(a.url!)} className="block overflow-hidden rounded-md bg-bg-3 transition-opacity duration-150 hover:opacity-90">
         <img src={a.url} alt={a.name} loading="lazy" width={Math.round(w * scale)} height={Math.round(h * scale)} className="block object-cover" />
       </button>
     );
@@ -289,7 +305,7 @@ function AttachmentView({ attachment: a }: { attachment: Attachment }) {
     <button
       type="button"
       onClick={() => a.url && void openExternal(a.url)}
-      className="flex w-72 items-center gap-3 rounded-md border border-border bg-bg-1 px-3 py-2 text-left hover:bg-bg-3"
+      className="flex w-72 items-center gap-3 rounded-md border border-border bg-bg-1 px-3 py-2 text-left transition-colors duration-150 hover:bg-bg-3"
     >
       <FileText size={28} strokeWidth={1.5} className="shrink-0 text-accent" />
       <span className="min-w-0">

@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { Copy, Download, Minus, Square, X } from 'lucide-react';
 import { useUpdate } from '../app/updates';
 import { windowControls } from '../shared/shell';
+import { BrandMark } from './ui';
 
 const ICON = { size: 14, strokeWidth: 1.75 };
 
@@ -20,6 +21,9 @@ export function Titlebar({ title }: { title: string }) {
       data-tauri-drag-region
       className="flex h-9 shrink-0 items-center border-b border-border bg-bg-1 pl-3"
     >
+      <div data-tauri-drag-region className="pointer-events-none mr-2">
+        <BrandMark size={18} />
+      </div>
       <span data-tauri-drag-region className="text-body font-semibold text-text-2">
         {title}
       </span>

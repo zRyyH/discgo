@@ -1,5 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog';
-import { Button } from './ui';
+import { Button, cx, dialogOverlay, dialogPanel } from './ui';
 
 export function ConfirmDialog(props: {
   open: boolean;
@@ -12,8 +12,8 @@ export function ConfirmDialog(props: {
   return (
     <Dialog.Root open={props.open} onOpenChange={props.onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/60" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 z-50 w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-bg-2 p-6 shadow-popover">
+        <Dialog.Overlay className={dialogOverlay} />
+        <Dialog.Content className={cx(dialogPanel, 'w-[400px] rounded-lg p-6')}>
           <Dialog.Title className="text-title font-semibold">{props.title}</Dialog.Title>
           <Dialog.Description className="mt-2 text-body text-text-2">{props.text}</Dialog.Description>
           <div className="mt-6 flex justify-end gap-2">

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Hash, Loader2, MessagesSquare, Users } from 'lucide-react';
+import { Hash, MessagesSquare, Users } from 'lucide-react';
 import { useCommunity } from '../stores/community';
 import { useSettings } from '../stores/settings';
 import { useUi } from '../stores/ui';
@@ -14,24 +14,18 @@ import { MessageList } from './MessageList';
 import { SettingsDialog } from './SettingsDialog';
 import { SourcePicker } from './SourcePicker';
 import { Sidebar } from './Sidebar';
-import { EmptyState, ICON, IconButton } from './ui';
+import { EmptyState, ICON, IconButton, Splash, usePresence } from './ui';
 
 export function Workspace() {
   const ready = useCommunity((s) => s.ready);
   const status = useCommunity((s) => s.status);
   useDefaultChannel();
 
-  if (!ready) {
-    return (
-      <div className="flex flex-1 items-center justify-center bg-bg-2 text-text-3">
-        <Loader2 size={22} className="animate-spin" />
-      </div>
-    );
-  }
+  if (!ready) return <Splash text="Conectando…" />;
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 animate-[fade-in_220ms_ease-out] flex-col">
       {status === 'reconnecting' && (
-        <div className="bg-warn/15 px-4 py-1 text-center text-meta text-warn">Conexão perdida. Reconectando…</div>
+        <div className="animate-[slide-down_180ms_ease-out] bg-warn/15 px-4 py-1 text-center text-meta text-warn">Reconectando…</div>
       )}
       <div className="flex min-h-0 flex-1">
         <Sidebar />
@@ -92,7 +86,7 @@ function ChatPane() {
               <Composer channelId={channel.id} channelName={channel.name} />
             </>
           ) : (
-            <EmptyState icon={MessagesSquare} text="Escolha um canal de texto." />
+            <EmptyState icon={MessagesSquare} text="Escolha um canal." />
           )}
         </div>
         {showMembers && <MemberList />}
@@ -105,7 +99,8 @@ function ChatPane() {
 /** In the chat the voice bar floats above the composer. */
 function VoiceBarSpacer() {
   const inVoice = useVoice((s) => !!s.channelId);
-  return inVoice ? (
+  const { mounted } = usePresence(inVoice, 160);
+  return mounted ? (
     <div className="relative h-16 shrink-0">
       <VoiceBar />
     </div>

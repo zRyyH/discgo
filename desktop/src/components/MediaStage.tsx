@@ -32,6 +32,7 @@ export function MediaStage() {
   const sharing = useScreen((s) => s.status === 'sharing' || s.status === 'restarting');
   const [focus, setFocus] = useState<string | null>(null);
   const stage = useRef<HTMLDivElement>(null);
+  const controls = useIdleControls();
 
   const tiles = useMemo<Tile[]>(() => {
     const out: Tile[] = [];
@@ -59,7 +60,7 @@ export function MediaStage() {
   }, []);
 
   return (
-    <div ref={stage} className="relative flex min-h-0 flex-1 flex-col bg-bg-0 p-4 pb-20">
+    <div ref={stage} onMouseMove={controls.wake} className="relative flex min-h-0 flex-1 flex-col bg-bg-0 p-4 pb-20">
       {focused ? (
         <>
           <div className="flex min-h-0 flex-1 items-center justify-center">
@@ -87,7 +88,10 @@ export function MediaStage() {
         aria-label="Tela cheia (F)"
         title="Tela cheia (F)"
         onClick={() => (document.fullscreenElement ? void document.exitFullscreen() : void stage.current?.requestFullscreen())}
-        className="absolute top-3 right-3 rounded-md p-2 text-text-2 hover:bg-bg-3 hover:text-text-1"
+        className={cx(
+          'absolute top-3 right-3 rounded-md p-2 text-text-2 transition-[opacity,background-color,color] duration-300 hover:bg-bg-3 hover:text-text-1',
+          controls.shown ? 'opacity-100' : 'opacity-0',
+        )}
       >
         <Maximize2 size={16} strokeWidth={1.75} />
       </button>
@@ -106,7 +110,7 @@ const TileView = memo(function TileView({ tile, big, onClick }: { tile: Tile; bi
       type="button"
       onClick={onClick}
       className={cx(
-        'relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-lg bg-bg-2 outline-2 outline-offset-2 transition-[outline-color] duration-150',
+        'relative flex aspect-video w-full animate-[pop_200ms_ease-out] items-center justify-center overflow-hidden rounded-lg bg-bg-2 outline-2 outline-offset-2 transition-[outline-color] duration-150',
         big && 'max-h-full w-auto max-w-full',
         speaking && tile.kind === 'user' && !state?.self_mute ? 'outline outline-ok' : 'outline outline-transparent',
       )}
@@ -191,4 +195,20 @@ export function VolumeMenu({ userId, children }: { userId: string; children: Rea
       </ContextMenu.Portal>
     </ContextMenu.Root>
   );
+}
+
+/** Stage controls show while the mouse moves and fade out 2 s after it stops (PLAN 8). */
+function useIdleControls() {
+  const [shown, setShown] = useState(true);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const wake = () => {
+    setShown(true);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setShown(false), 2000);
+  };
+  useEffect(() => {
+    timer.current = setTimeout(() => setShown(false), 2000);
+    return () => clearTimeout(timer.current);
+  }, []);
+  return { shown, wake };
 }

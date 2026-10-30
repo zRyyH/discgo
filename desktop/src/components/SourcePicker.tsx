@@ -3,7 +3,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { AppWindow, Loader2, Monitor, X } from 'lucide-react';
 import { useScreen } from '../media/ScreenShare';
 import type { ContentMode, Preset, SourceRef } from '../shared/engine';
-import { Button, IconButton, Toggle, cx } from './ui';
+import { Button, IconButton, Toggle, cx, dialogOverlay, dialogPanel } from './ui';
 
 const presets: { id: Preset; label: string }[] = [
   { id: '720p30', label: '720p 30 fps' },
@@ -41,8 +41,8 @@ export function SourcePicker() {
   return (
     <Dialog.Root open={pickerOpen} onOpenChange={(o) => !o && closePicker()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/60" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 z-50 flex h-[min(620px,88vh)] w-[min(820px,92vw)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border border-border bg-bg-2 shadow-popover">
+        <Dialog.Overlay className={dialogOverlay} />
+        <Dialog.Content className={cx(dialogPanel, 'flex h-[min(620px,88vh)] w-[min(820px,92vw)] flex-col rounded-lg')}>
           <div className="flex items-center gap-4 border-b border-border px-5 pt-4">
             <Dialog.Title className="pb-3 text-title font-semibold">Compartilhar tela</Dialog.Title>
             <div className="flex flex-1 gap-1">
