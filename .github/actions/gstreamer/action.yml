@@ -1,0 +1,31 @@
+# Installs GStreamer (MSVC x64, runtime + development) on a Windows runner and points
+# pkg-config and PATH at it, as the engine build expects (PLAN 6.10).
+name: GStreamer
+description: Install the GStreamer MSVC SDK on a Windows runner
+
+inputs:
+  version:
+    description: GStreamer version
+    default: 1.28.8
+  sha256:
+    description: SHA-256 of the installer of that version
+    default: e4c41ee6ee9c6c32a45d198463ec08d79bac3bd5fa58adc93d13fe4a08abc9d9
+
+runs:
+  using: composite
+  steps:
+    - name: Install GStreamer ${{ inputs.version }}
+      shell: pwsh
+      env:
+        GST_VERSION: ${{ inputs.version }}
+        GST_SHA256: ${{ inputs.sha256 }}
+      run: |
+        $exe = "$env:RUNNER_TEMP\gstreamer.exe"
+        Invoke-WebRequest "https://gstreamer.freedesktop.org/data/pkg/windows/$env:GST_VERSION/msvc/gstreamer-1.0-msvc-x86_64-$env:GST_VERSION.exe" -OutFile $exe
+        if ((Get-FileHash $exe -Algorithm SHA256).Hash -ne $env:GST_SHA256) { throw 'GStreamer installer hash mismatch' }
+        $dir = "$env:RUNNER_TEMP\gstreamer"
+        Start-Process $exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', '/TYPE=full', "/DIR=$dir" -Wait
+        "GSTREAMER_1_0_ROOT_MSVC_X86_64=$dir\" >> $env:GITHUB_ENV
+        "PKG_CONFIG=$dir\bin\pkg-config.exe" >> $env:GITHUB_ENV
+        "PKG_CONFIG_PATH=$dir\lib\pkgconfig" >> $env:GITHUB_ENV
+        "$dir\bin" >> $env:GITHUB_PATH
