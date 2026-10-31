@@ -1,6 +1,8 @@
-# LiveKit SFU (PLAN 9). Copy to livekit.yaml and replace DOMAIN and the key/secret
-# (the secret must have at least 32 characters; same values as LIVEKIT_API_KEY /
-# LIVEKIT_API_SECRET in deploy/.env).
+# LiveKit SFU (PLAN 9, fase 10.4). Copy to livekit.yaml and replace DOMAIN and the keys
+# (secrets of at least 32 characters). Production and the development API (PLAN fase
+# 10.5) share this server, each with its own key pair: the first equals LIVEKIT_API_KEY /
+# LIVEKIT_API_SECRET in /opt/discgo/deploy/.env, the second the same pair in
+# /opt/discgo-dev/deploy/.env. Rooms are channel UUIDs, so the two never collide.
 port: 7880
 bind_addresses:
   - 127.0.0.1 # signalling only through nginx (wss://lk.DOMAIN)
@@ -11,7 +13,8 @@ rtc:
   use_external_ip: true
 
 keys:
-  REPLACE_KEY: REPLACE_WITH_A_LONG_RANDOM_SECRET
+  REPLACE_PROD_KEY: REPLACE_WITH_A_LONG_RANDOM_SECRET
+  REPLACE_DEV_KEY: REPLACE_WITH_ANOTHER_LONG_RANDOM_SECRET
 
 # Built-in TURN: also answers STUN (STUN_URLS=stun:turn.DOMAIN:3478). Used only on
 # the SFU path; P2P has no relay by design (PLAN 2.2).
@@ -23,8 +26,9 @@ turn:
   cert_file: /etc/letsencrypt/live/api.DOMAIN/fullchain.pem
   key_file: /etc/letsencrypt/live/api.DOMAIN/privkey.pem
 
+# Production only: the development API does without the secondary leave confirmation.
 webhook:
-  api_key: REPLACE_KEY
+  api_key: REPLACE_PROD_KEY
   urls:
     - http://127.0.0.1:8080/v1/livekit/webhook
 

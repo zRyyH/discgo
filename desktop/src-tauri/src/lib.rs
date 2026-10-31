@@ -75,6 +75,10 @@ pub fn run() {
                 }
             }
             tray::setup(app.handle())?;
+            // The taskbar and Alt+Tab show the product name, which tells DiscGo Dev apart.
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.set_title(&app.package_info().name);
+            }
             // The window starts hidden (tauri.conf.json) so a login start stays in the tray.
             if !std::env::args().any(|a| a == AUTOSTART_ARG) {
                 tray::show_main(app.handle());

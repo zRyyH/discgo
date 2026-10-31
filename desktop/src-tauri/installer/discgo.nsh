@@ -92,11 +92,12 @@ Function DiscGoInstFilesShow
   System::Call 'user32::LoadImageW(p 0, w "$PLUGINSDIR\discgo-logo.bmp", i 0, i r4, i r4, i 0x10) p .r5'
   SendMessage $1 0x0172 0 $5 ; STM_SETIMAGE, IMAGE_BITMAP
 
-  ; The line (SS_CENTER | WS_CHILD | WS_VISIBLE), Segoe UI semibold.
+  ; The line (SS_CENTER | WS_CHILD | WS_VISIBLE), Segoe UI semibold. $(^Name) is the
+  ; product name, so DiscGo Dev (PLAN fase 10.6) says its own.
   !insertmacro DiscGoScale $5 84
   IntOp $6 $6 + $5
   !insertmacro DiscGoScale $5 32
-  System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "Instalando o DiscGo…", i 0x50000001, i 0, i r6, i r2, i r5, p r0, p 0, p 0, p 0) p .r1'
+  System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "Instalando o $(^Name)…", i 0x50000001, i 0, i r6, i r2, i r5, p r0, p 0, p 0, p 0) p .r1'
   !insertmacro DiscGoScale $8 -20
   System::Call 'gdi32::CreateFontW(i r8, i 0, i 0, i 0, i 600, i 0, i 0, i 0, i 1, i 0, i 0, i 5, i 0, w "Segoe UI") p .r5'
   SendMessage $1 ${WM_SETFONT} $5 1

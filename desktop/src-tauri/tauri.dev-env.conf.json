@@ -1,0 +1,20 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "DiscGo Dev",
+  "mainBinaryName": "discgo-dev",
+  "identifier": "app.discgo.dev",
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "discgo-dev"
+        ]
+      }
+    },
+    "updater": {
+      "endpoints": [
+        "https://api-dev.discgo.awpsoft.com.br/releases/latest.json"
+      ]
+    }
+  }
+}

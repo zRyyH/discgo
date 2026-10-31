@@ -1,0 +1,105 @@
+# CI (PLAN fase 10.2): every PR to develop or main and every push to them. The rulesets
+# require the final `ci` job, which passes only when api, desktop and rust all pass.
+name: ci
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+  # release-please.yml starts it on the release PR: PRs opened with GITHUB_TOKEN start
+  # no workflow, and the check is required on main.
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: discgo
+          POSTGRES_PASSWORD: discgo
+          POSTGRES_DB: discgo
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U discgo -d discgo"
+          --health-interval 5s --health-timeout 3s --health-retries 30
+    env:
+      TEST_DATABASE_URL: postgres://discgo:discgo@localhost:5432/discgo?sslmode=disable
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          [ -z "$unformatted" ] || { echo "$unformatted"; exit 1; }
+      - run: go vet ./...
+      - run: go test -race ./...
+
+  desktop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: desktop/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm build
+
+  rust:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: ./.github/actions/gstreamer
+      - name: Stand-ins for the desktop build script
+        shell: pwsh
+        run: |
+          # tauri-build checks that the engine sidecar and the GStreamer resources exist;
+          # they are built only for releases (installer.yml).
+          New-Item -ItemType Directory -Force desktop/dist, desktop/src-tauri/resources/gst/bin, desktop/src-tauri/resources/gst/plugins | Out-Null
+          Set-Content desktop/dist/index.html '<!doctype html>'
+          foreach ($f in 'binaries/discgo-engine-x86_64-pc-windows-msvc.exe', 'resources/gst/bin/stand-in.dll', 'resources/gst/plugins/stand-in.dll') {
+            New-Item -ItemType File -Force "desktop/src-tauri/$f" | Out-Null
+          }
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+
+  ci:
+    if: always()
+    needs: [api, desktop, rust]
+    runs-on: ubuntu-latest
+    steps:
+      - name: api, desktop and rust passed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        run: exit 1

@@ -2,7 +2,7 @@
 // state: not in voice, in a call, speaking (green ring) or muted/deafened (red
 // dot). Speaking comes from the media session (getStats at 10 Hz in P2P,
 // ActiveSpeakersChanged in SFU), which keeps running with the window hidden.
-import { autostart, inTauri, tray, type TrayIconState } from '../shared/shell';
+import { appName, autostart, inTauri, tray, type TrayIconState } from '../shared/shell';
 import { useCommunity } from '../stores/community';
 import { useSettings } from '../stores/settings';
 import { useSpeaking } from '../stores/speaking';
@@ -13,6 +13,7 @@ import { useVoice } from '../stores/voice';
 const SPEAKING_HOLD_MS = 300;
 const MIN_GAP_MS = 150;
 
+let name = 'DiscGo';
 let speakingUntil = 0;
 let lastKey = '';
 let lastSentAt = 0;
@@ -26,11 +27,12 @@ function current() {
   const speaking = now < speakingUntil;
 
   let state: TrayIconState = 'idle';
-  let tooltip = 'DiscGo';
+  let tooltip = name;
   if (v.channelId) {
-    const name = useCommunity.getState().channels.find((c) => c.id === v.channelId)?.name;
+    const channel = useCommunity.getState().channels.find((c) => c.id === v.channelId)?.name;
     state = v.selfDeaf || v.selfMute ? 'muted' : speaking ? 'speaking' : 'voice';
-    tooltip = v.selfDeaf ? 'DiscGo · Ensurdecido' : v.selfMute ? 'DiscGo · Mudo' : name ? `DiscGo · ${name}` : 'DiscGo';
+    const detail = v.selfDeaf ? 'Ensurdecido' : v.selfMute ? 'Mudo' : channel;
+    if (detail) tooltip = `${name} · ${detail}`;
   }
   return { state, tooltip, mute: v.selfMute, deaf: v.selfDeaf, speaking };
 }
@@ -72,6 +74,10 @@ export function startTray() {
     if (s.channels !== prev.channels || s.me !== prev.me) update();
   });
   update();
+  void appName().then((n) => {
+    name = n;
+    update();
+  });
 
   void tray.onToggle('mute', () => useVoice.getState().toggleMute());
   void tray.onToggle('deaf', () => useVoice.getState().toggleDeaf());
