@@ -270,3 +270,28 @@ animations. Scripting time per frame was not profiled in DevTools this time.
 
 Found on the way: the dialog overlays used `bg-black/60`, and the theme defines no
 `black`, so the background was never dimmed; they use `bg-bg-0/75` now.
+
+## Phase 10 — 2026-10-30 (Magalu VM, GitHub Actions)
+
+VM `201.23.67.225`: Ubuntu 24.04.5, 4 vCPU, 7.8 GiB RAM (+ 2 GiB swap), 38 GB disk,
+Docker 29.9.2, Compose 5.6.1. The API image is built on the VM (more than the 2 GB the
+plan set as the limit for building there).
+
+| Step | Time |
+|---|---|
+| VM bootstrap (upgrade, Docker, ufw, fail2ban, swap) | ~4 min |
+| First production deploy (certificate for 4 names, pulls, API and backup builds) | 1 min 44 s |
+| First development deploy (API image from cache) | 8.5 s |
+| CI, cold caches: `api` / `desktop` / `rust` (Windows, GStreamer install included) | 2 min / 20 s / 12 min |
+
+Checks from outside (dev-1, home network):
+
+| Check | Result |
+|---|---|
+| `https://api.DOMAIN/healthz`, `https://api-dev.DOMAIN/healthz` | `{"status":"ok"}` |
+| `https://lk.DOMAIN/` (LiveKit through nginx) | `OK` |
+| STUN binding request to `turn.DOMAIN:3478/udp` | answered with dev-1's public address |
+| TCP 443, 7881, 5349 | open |
+| `deploy.sh backup` | `s3://discgo/db/discgo-20261031T002230Z.sql.gz`, 1.6 kB (empty database) |
+| Container → `https://api.DOMAIN` via `host-gateway` | 200 (the public IP itself is unreachable from the VM) |
+| Google `…/auth/google/start` for `api` and `api-dev` | `redirect_uri_mismatch` (to fix in the Google console); `localhost` passes |
