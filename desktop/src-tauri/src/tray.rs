@@ -31,10 +31,12 @@ fn icon(state: &str) -> Image<'static> {
 }
 
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", "Abrir o DiscGo", true, None::<&str>)?;
+    // "DiscGo", or "DiscGo Dev" for the development app (PLAN fase 10.6).
+    let name = app.package_info().name.clone();
+    let open = MenuItem::with_id(app, "open", format!("Abrir o {name}"), true, None::<&str>)?;
     let mute = CheckMenuItem::with_id(app, "mute", "Silenciar", true, false, None::<&str>)?;
     let deaf = CheckMenuItem::with_id(app, "deaf", "Ensurdecer", true, false, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Sair do DiscGo", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", format!("Sair do {name}"), true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
         &[
@@ -48,7 +50,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     )?;
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon("idle"))
-        .tooltip("DiscGo")
+        .tooltip(&name)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, e| match e.id().as_ref() {
