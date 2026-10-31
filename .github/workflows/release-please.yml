@@ -28,13 +28,14 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
       # The release PR is opened with GITHUB_TOKEN, which starts no workflow: run the
-      # required `ci` check on its branch by hand.
+      # required `ci` check on its branch by hand. The step's env is evaluated even when
+      # `if` is false, so the PR JSON is parsed in the script, not with fromJSON.
       - name: CI on the release PR
         if: steps.release.outputs.pr
         env:
           GH_TOKEN: ${{ github.token }}
-          BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
-        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
+          PR: ${{ steps.release.outputs.pr }}
+        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$(jq -r .headBranchName <<<"$PR")"
 
   release:
     needs: release-please
