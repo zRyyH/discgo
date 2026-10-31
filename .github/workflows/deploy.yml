@@ -1,0 +1,55 @@
+# Deploy (PLAN fase 10.2): a push to main updates production (/opt/discgo on the VM), a
+# push to develop the development API (/opt/discgo-dev). Both only happen through PRs
+# whose `ci` passed (rulesets). deploy.sh builds, restarts and checks /healthz.
+# Secrets: VM_HOST, VM_USER, VM_SSH_KEY, VM_KNOWN_HOSTS.
+name: deploy
+
+on:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-prod:
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: https://api.discgo.awpsoft.com.br/healthz
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/vm-ssh
+        with:
+          host: ${{ secrets.VM_HOST }}
+          user: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          known-hosts: ${{ secrets.VM_KNOWN_HOSTS }}
+      - name: Deploy production
+        run: ssh vm 'cd /opt/discgo && git fetch --prune origin && git checkout --force origin/main && deploy/scripts/deploy.sh'
+
+  deploy-dev:
+    if: github.ref_name == 'develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: development
+      url: https://api-dev.discgo.awpsoft.com.br/healthz
+    concurrency:
+      group: deploy-dev
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/vm-ssh
+        with:
+          host: ${{ secrets.VM_HOST }}
+          user: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          known-hosts: ${{ secrets.VM_KNOWN_HOSTS }}
+      - name: Deploy development
+        run: ssh vm 'cd /opt/discgo-dev && git fetch --prune origin && git checkout --force origin/develop && deploy/scripts/deploy.sh dev'
