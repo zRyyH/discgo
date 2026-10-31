@@ -295,3 +295,14 @@ Checks from outside (dev-1, home network):
 | `deploy.sh backup` | `s3://discgo/db/discgo-20261031T002230Z.sql.gz`, 1.6 kB (empty database) |
 | Container → `https://api.DOMAIN` via `host-gateway` | 200 (the public IP itself is unreachable from the VM) |
 | Google `…/auth/google/start` for `api` and `api-dev` | `redirect_uri_mismatch` (to fix in the Google console); `localhost` passes |
+
+First releases through CI (GitHub-hosted `windows-latest`, warm Rust cache from the CI runs):
+
+| Step | Time |
+|---|---|
+| Deploy over SSH (`deploy-prod` / `deploy-dev`, nothing to rebuild) | 11 s / 11 s |
+| DiscGo Dev 0.2.4: Windows build (GStreamer install, engine, runtime, installer) | 16 min 47 s |
+| v0.2.0: tag → installer built | 16 min 48 s |
+| Copy to the VM (installer, `.sig`, stable copy, `latest.json` last) | 19 s |
+| `latest.json` in place → API logs `releases: version published` (poll 60 s) | 7 s (dev), 18 s (production) |
+| Production installer | 16,134,486 bytes (15.4 MiB; budget 90 MB) |
