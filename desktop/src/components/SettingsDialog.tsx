@@ -4,7 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { AppWindow, BadgeCheck, Check, Copy, Hash, Mic, Trash2, UserRound, Users, Volume2, X, type LucideIcon } from 'lucide-react';
 import { api, ApiError } from '../api/rest';
 import type { Channel } from '../shared/protocol';
-import { appVersion } from '../shared/shell';
+import { appName, appVersion } from '../shared/shell';
 import { useCommunity } from '../stores/community';
 import { useSession } from '../stores/session';
 import { useSettings } from '../stores/settings';
@@ -86,7 +86,11 @@ function Account() {
   const me = useCommunity((s) => s.me);
   const logout = useSession((s) => s.logout);
   const [version, setVersion] = useState('');
-  useEffect(() => void appVersion().then(setVersion).catch(() => {}), []);
+  const [name, setName] = useState('DiscGo');
+  useEffect(() => {
+    void appVersion().then(setVersion).catch(() => {});
+    void appName().then(setName).catch(() => {});
+  }, []);
   if (!me) return null;
   return (
     <>
@@ -110,7 +114,7 @@ function Account() {
       <p className="mt-3 text-meta text-text-3">Nome e foto vêm do Google.</p>
       <p className="mt-6 flex items-center gap-1.5 text-meta text-text-3">
         <BadgeCheck size={14} strokeWidth={2} className="text-ok" />
-        Atualizações automáticas · DiscGo {version}
+        Atualizações automáticas · {name} {version}
       </p>
     </>
   );

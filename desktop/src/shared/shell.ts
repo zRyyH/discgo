@@ -2,6 +2,7 @@
 // Tauri goes through here so the shell stays swappable. Outside Tauri (the UI
 // opened in a plain browser during development, e.g. as extra call participants)
 // it falls back to browser equivalents.
+import { getName } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -42,6 +43,8 @@ export const session = {
 export const openExternal = (url: string) =>
   inTauri ? invoke<void>('open_external', { url }) : Promise.resolve(void window.open(url, '_blank', 'noopener'));
 export const appVersion = () => (inTauri ? invoke<string>('app_version') : Promise.resolve('dev-browser'));
+/** "DiscGo", or "DiscGo Dev" for the app of the development environment (PLAN fase 10.6). */
+export const appName = () => (inTauri ? getName() : Promise.resolve('DiscGo'));
 
 /** Calls cb for every discgo:// URL: the one that launched the app and later ones. */
 export async function onDeepLink(cb: (url: URL) => void): Promise<() => void> {

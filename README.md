@@ -94,13 +94,19 @@ read by the engine: `DISCGO_ENGINE_LOG=debug|trace`, `DISCGO_ENGINE_CAPTURE_API=
 `pnpm tauri dev --config '{"build":{"devUrl":"http://localhost:1420/?spike=webview"}}'`
 and report to the same harness.
 
-## Releases (phase 8)
+## Releases (phases 8 and 10)
 
-A tag `vX.Y.Z` (equal to `desktop/src-tauri/tauri.conf.json` `version`) runs
-[.github/workflows/release.yml](.github/workflows/release.yml) on a Windows runner: it
-installs GStreamer, builds the engine and its runtime, builds the NSIS installer
-(per-user install, WebView2 bootstrapper), signs the update with minisign and uploads
-`DiscGo_X.Y.Z_x64-setup.exe` + `latest.json` to `s3://$RELEASES_BUCKET/releases/`.
+Branches, CI and the VM are in [deploy/README.md](deploy/README.md) (the production
+runbook). In short: features go to `develop` in squash-merged PRs titled in Conventional
+Commits, `develop` goes to `main` with a merge commit, and release-please keeps a
+release PR on `main`. Merging it bumps `version` (`desktop/src-tauri/tauri.conf.json`,
+`desktop/package.json`, `Cargo.toml`), tags `vX.Y.Z` and runs
+[.github/workflows/release.yml](.github/workflows/release.yml): a Windows runner installs
+GStreamer, builds the engine and its runtime, builds the NSIS installer (per-user
+install, WebView2 bootstrapper) and signs the update with minisign
+([installer.yml](.github/workflows/installer.yml)); then
+`DiscGo_X.Y.Z_x64-setup.exe`, its `.sig`, `DiscGo-Setup.exe` and, last, `latest.json`
+are copied to the VM, which serves them at `https://api.discgo.awpsoft.com.br/releases/`.
 Updates are forced (PLAN fase 9A): the API polls `RELEASES_URL` (that `latest.json`)
 every minute and sends `app_update` over the gateway to every app older than it, and the
 apps also check at start and every 6 h. The app downloads the package (minisign-checked),
@@ -115,21 +121,31 @@ is a patched copy of Tauri's NSIS template in
 fails if an anchor moved). The tray icons and installer marks are drawn by
 `node desktop/scripts/brand-art.mjs`.
 
-Order for a release: deploy the API first (it must keep working with the previous app
-version), bump `version` in `desktop/src-tauri/tauri.conf.json`, tag. The CI uploads
+The API always ships first: the push to `main` deploys it before the release PR is
+merged, and it must keep working with the previous app version. The CI uploads
 `latest.json` last, so apps are only told once the installer is there.
 
-Testing it locally without S3: build with
+**Two apps on one PC (PLAN fase 10.6).** Every push to `develop` also builds
+**DiscGo Dev**, the same app with
+[desktop/src-tauri/tauri.dev-env.conf.json](desktop/src-tauri/tauri.dev-env.conf.json) on
+top: its own name, identifier (`app.discgo.dev`: install folder, Start menu entry,
+settings, WebView data, single instance, start with Windows and the keyring session are
+all separate), executable (`discgo-dev.exe`), deep link scheme `discgo-dev://` and
+updater channel `https://api-dev.discgo.awpsoft.com.br/releases/latest.json`, built
+against the development API. Its version is `MAJOR.MINOR.<deploy run number>`, so each
+push is an update the dev app installs by itself. Download:
+`https://api-dev.discgo.awpsoft.com.br/releases/DiscGo-Dev-Setup.exe`. The same build by
+hand: `pnpm tauri build --config src-tauri/tauri.dev-env.conf.json` with
+`VITE_API_URL=https://api-dev.discgo.awpsoft.com.br`.
+
+Testing it locally without the VM: build with
 `pnpm tauri build --config '{"version":"0.1.1","plugins":{"updater":{"endpoints":["http://127.0.0.1:18090/latest.json"],"dangerousInsecureTransportProtocol":true}}}'`
 (and the same without `version` for the installed build), serve the installer, its `.sig`
 and a `latest.json` from that port, and run the API with
 `RELEASES_URL=http://127.0.0.1:18090/latest.json RELEASES_POLL=5s`.
 
-Repository secrets: `TAURI_SIGNING_PRIVATE_KEY` (contents of the private key),
-`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (empty for the current key), `AWS_ACCESS_KEY_ID`,
-`AWS_SECRET_ACCESS_KEY`. Variables: `VITE_API_URL` (`https://api.DOMAIN`),
-`RELEASES_BUCKET`, `AWS_REGION`. The updater endpoint is in `tauri.conf.json`
-(`plugins.updater.endpoints`); change it if the bucket name differs.
+Secrets and environments are listed in [deploy/README.md](deploy/README.md). The updater
+endpoint is in `tauri.conf.json` (`plugins.updater.endpoints`).
 
 The update key pair lives in `%USERPROFILE%\.tauri\discgo-updater.key(.pub)`; the public
 key is in `tauri.conf.json`. Losing the private key means installed apps can no longer
